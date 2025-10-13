@@ -1,16 +1,19 @@
-# main.py - Enhanced version with GPT Formatting
+# main.py - Healthcare Chatbot with Hybrid Architecture
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List, Optional, Dict
+from typing import Dict, Any, Optional
 import json
 import uuid
 import asyncio
 from datetime import datetime
 import os
+import logging
 from dotenv import load_dotenv
+import re
+import string
+import yaml
 
-# LlamaIndex imports - Fixed
+# LlamaIndex imports
 from llama_index.core import Settings
 from llama_index.core.chat_engine import SimpleChatEngine
 from llama_index.core.memory import ChatMemoryBuffer
@@ -18,601 +21,855 @@ from llama_index.core.memory import ChatMemoryBuffer
 # Redis for session management
 import redis.asyncio as redis
 
-# Local imports
-from providers import ProviderManager, ProviderType
-from mcp.medical_tools import MedicalTools
+# Local imports - New Models and Managers
+from models import (
+    ChatRequest, ToolRequest, StandardResponse, ChatResponse, ToolResponse, 
+    ErrorResponse, HealthCheck, ProviderInfo, SessionInfo, PromptMode, 
+    ToolType, ResponseStatus, ConversationMemory, create_success_response, 
+    create_error_response
+)
+from providers import ProviderManager
+from mcp.medical_tools import get_medical_tools, MedicalTools
+from prompt_manager import get_prompt_manager, PromptManager
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
 
-# Create FastAPI app (SOLO UNA VEZ)
+# Create FastAPI app
 app = FastAPI(
-    title="Healthcare Chat API - Multi-Provider with GPT Formatting",
-    description="Secure chat backend with Azure OpenAI and OpenAI support + Medical Tools + GPT Formatting",
-    version="1.1.0"
+    title="Healthcare Chat API - Hybrid Architecture",
+    description="Advanced healthcare chatbot with unified chat endpoint and specialized medical tools",
+    version="2.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
 )
 
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # En producción, especifica dominios específicos
+    allow_origins=["*"],  # Configure properly for production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Pydantic models
-class ChatMessage(BaseModel):
-    message: str
-    session_id: str
-    user_id: Optional[str] = None
-    context: Optional[Dict] = None
-    provider: Optional[str] = None
+# ============================================================================
+# GLOBAL CONFIGURATION CLASS
+# ============================================================================
 
-class ChatResponse(BaseModel):
-    response: str
-    session_id: str
-    timestamp: datetime
-    provider: str
-    tokens_used: Optional[int] = None
-
-class SessionInfo(BaseModel):
-    session_id: str
-    created_at: datetime
-    message_count: int
-    last_activity: datetime
-    provider: str
-
-class ProviderSwitchRequest(BaseModel):
-    provider: str
-
-class GPTFormattingRequest(BaseModel):
-    raw_data: str
-    original_question: str
-    tool_name: str
-    extracted_term: str
-
-# Global configurations
-class ChatConfig:
+class HybridChatConfig:
+    """Configuration class for hybrid architecture"""
+    
     def __init__(self):
-        self.provider_manager = None
-        self.redis_client = None
+        self.provider_manager: Optional[ProviderManager] = None
+        self.redis_client: Optional[redis.Redis] = None
+        self.medical_tools: Optional[MedicalTools] = None
+        self.prompt_manager: Optional[PromptManager] = None
         self.chat_engines: Dict[str, SimpleChatEngine] = {}
-        self.medical_tools = MedicalTools()
+        self.initialized = False
         
     async def initialize(self):
-        """Initialize provider manager and Redis connections"""
+        """Initialize all components of the hybrid system"""
         try:
-            # Initialize provider manager
-            self.provider_manager = ProviderManager()
+            logger.info("🚀 Initializing Hybrid Chat System...")
             
-            # Set global settings with current provider
+            # 1. Initialize Provider Manager
+            self.provider_manager = ProviderManager()
             current_provider = self.provider_manager.get_current_provider()
             Settings.llm = current_provider.get_llm()
             Settings.embed_model = current_provider.get_embedding()
+            logger.info(f"✅ Provider Manager initialized - Active: {self.provider_manager.current_provider}")
             
-            # Initialize Redis
-            self.redis_client = redis.from_url(
-                os.getenv("REDIS_URL", "redis://localhost:6379/0"),
-                decode_responses=True
-            )
+            # 2. Initialize Redis
+            try:
+                self.redis_client = redis.from_url(
+                    os.getenv("REDIS_URL", "redis://localhost:6379/0"),
+                    decode_responses=True
+                )
+                # Test connection
+                await self.redis_client.ping()
+                logger.info("✅ Redis connection established")
+            except Exception as e:
+                logger.warning(f"⚠️ Redis connection failed: {e}")
+                self.redis_client = None
             
-            # Initialize medical tools
-            await self.medical_tools.initialize()
+            # 3. Initialize Medical Tools
+            self.medical_tools = await get_medical_tools()
+            logger.info("✅ Medical Tools initialized")
             
-            print("✅ Chat configuration initialized successfully")
-            print(f"🎯 Active provider: {self.provider_manager.current_provider}")
+            # 4. Initialize Prompt Manager
+            self.prompt_manager = await get_prompt_manager(self.redis_client)
+            logger.info("✅ Prompt Manager initialized")
+            
+            self.initialized = True
+            logger.info("🎯 Hybrid Chat System fully initialized!")
             
         except Exception as e:
-            print(f"❌ Error initializing chat config: {e}")
+            logger.error(f"❌ Error initializing Hybrid Chat System: {e}")
             raise
-
-    def switch_provider(self, provider_name: str) -> bool:
-        """Switch to a different provider and update global settings"""
-        if not self.provider_manager.set_provider(provider_name):
-            return False
-        
-        # Update global settings
-        current_provider = self.provider_manager.get_current_provider()
-        Settings.llm = current_provider.get_llm()
-        Settings.embed_model = current_provider.get_embedding()
-        
-        # Clear existing chat engines to use new provider
-        self.chat_engines.clear()
-        
-        return True
-
-    def get_or_create_chat_engine(self, session_id: str, provider_override: str = None) -> SimpleChatEngine:
-        """Get existing chat engine or create new one for session"""
-        # Use provider override if specified and valid
-        if provider_override and provider_override in self.provider_manager.get_available_providers():
-            temp_provider = self.provider_manager.providers[provider_override]
-            llm = temp_provider.get_llm()
-        else:
-            llm = Settings.llm
-        
-        engine_key = f"{session_id}_{provider_override or self.provider_manager.current_provider}"
+    
+    async def get_or_create_chat_engine(self, session_id: str, prompt_mode: PromptMode) -> SimpleChatEngine:
+        """Get or create chat engine with specific prompt mode"""
+        engine_key = f"{session_id}_{prompt_mode.value}_{self.provider_manager.current_provider}"
         
         if engine_key not in self.chat_engines:
-            # Create memory buffer - FIXED VERSION
             try:
-                memory = ChatMemoryBuffer.from_defaults(
-                    token_limit=3000
-                    # Removed problematic tokenizer_fn
+                # Get prompt configuration
+                prompt_config = await self.prompt_manager.get_prompt(prompt_mode)
+                
+                # Create memory buffer
+                try:
+                    memory = ChatMemoryBuffer.from_defaults(token_limit=3000)
+                except Exception:
+                    memory = ChatMemoryBuffer.from_defaults()
+                
+                # Create chat engine with custom prompt
+                chat_engine = SimpleChatEngine.from_defaults(
+                    llm=Settings.llm,
+                    memory=memory,
+                    system_prompt=prompt_config.system_prompt
                 )
-            except Exception:
-                # Fallback: create memory without token limit
-                memory = ChatMemoryBuffer.from_defaults()
-            
-            # Enhanced system prompt with medical tools awareness and multilingual support
-            enhanced_system_prompt = (
-                "You are a helpful healthcare assistant with access to medical databases and tools. "
-                "You can search FDA drug information, PubMed literature, clinical trials, ICD-10 codes, "
-                "and scrape medical websites when needed. "
-                "Provide accurate, professional medical information while being empathetic and clear. "
-                "Always recommend consulting healthcare professionals for medical decisions. "
-                "When appropriate, use your medical tools to provide up-to-date information. "
-                "Format your responses using markdown for better readability. "
-                "IMPORTANT: Always respond in the same language as the user's question. "
-                "If they ask in Spanish, respond in Spanish. If they ask in English, respond in English. "
-                "Use proper medical terminology in the appropriate language."
-            )
-            
-            # Create chat engine with memory
-            chat_engine = SimpleChatEngine.from_defaults(
-                llm=llm,
-                memory=memory,
-                system_prompt=enhanced_system_prompt
-            )
-            
-            self.chat_engines[engine_key] = chat_engine
-            
+                
+                # Store chat engine
+                self.chat_engines[engine_key] = chat_engine
+                logger.debug(f"Created new chat engine: {engine_key}")
+                
+            except Exception as e:
+                logger.error(f"Error creating chat engine: {e}")
+                raise
+        
         return self.chat_engines[engine_key]
-
-    async def format_medical_response_with_gpt(self, raw_data: str, original_question: str, tool_name: str, extracted_term: str) -> str:
-        """Use GPT to format medical response with proper markdown"""
-        # Detect language
-        is_spanish = self._detect_spanish(original_question)
-        response_language = "Spanish" if is_spanish else "English"
-        
-        formatting_prompt = f"""You are an expert medical information formatter. Your task is to take raw medical data and create a beautifully formatted, professional response using markdown.
-
-ORIGINAL USER QUESTION: "{original_question}"
-DETECTED LANGUAGE: {response_language}
-
-RAW DATA FROM {tool_name.upper()}:
-{raw_data}
-
-LANGUAGE INSTRUCTION: 
-- Respond in {response_language} to match the user's question language
-- If Spanish: Use proper medical Spanish terminology and structure
-- If English: Use standard English medical terminology
-
-FORMATTING INSTRUCTIONS:
-1. Create a clear, professional medical response in {response_language}
-2. Use markdown formatting extensively:
-   - **Bold** for important terms, drug names, conditions
-   - *Italics* for medical terminology, scientific names
-   - ### Headers for different sections
-   - • Bullet points for lists
-   - > Blockquotes for important warnings or notes
-
-3. Structure the response with:
-   - Brief introduction answering the user's question
-   - Key information organized in sections
-   - Important details highlighted
-   - Professional medical disclaimer
-
-4. Include relevant details from the search:
-   - If FDA data: drug names, manufacturers, approval info, indications
-   - If PubMed: study findings, research conclusions
-   - If Clinical Trials: trial phases, conditions, recruitment status
-   - If ICD-10: codes, descriptions, categories
-   - If Web scraping: key medical information found
-
-5. Make it visually appealing and easy to scan
-6. End with appropriate medical disclaimer in {response_language}
-
-CRITICAL: Your entire response must be written in {response_language}. Do not mix languages.
-
-IMPORTANT: Format your response using proper markdown syntax. Make it professional but accessible.
-
-Please format the response:"""
-
-        # Create a temporary session for formatting
-        formatting_session = f"formatting_{uuid.uuid4().hex[:8]}"
-        chat_engine = self.get_or_create_chat_engine(formatting_session)
-        
-        try:
-            response = await asyncio.to_thread(chat_engine.chat, formatting_prompt)
-            return str(response)
-        except Exception as e:
-            print(f"GPT formatting error: {e}")
-            # Fallback to basic formatting
-            return self.basic_format_response(raw_data, original_question, tool_name, is_spanish)
-
-    def _detect_spanish(self, text: str) -> bool:
-        """Detect if text is in Spanish"""
-        spanish_words = [
-            'que', 'sobre', 'para', 'con', 'información', 'dime', 'quiero', 'necesito',
-            'medicamento', 'medicina', 'dolor', 'enfermedad', 'síntoma', 'tratamiento',
-            'salud', 'médico', 'hospital', 'pastilla', 'píldora', 'curar', 'aliviar',
-            'cómo', 'cuándo', 'dónde', 'por', 'favor', 'ayuda', 'gracias',
-            'aspirina', 'paracetamol', 'ibuprofeno', 'diabetes', 'hipertensión',
-            'es', 'está', 'tiene', 'puede', 'debe', 'debería', 'podría'
+    
+    def detect_language(self, text: str) -> str:
+        """Detect language of input text"""
+        spanish_indicators = [
+            'que', 'qué', 'para', 'con', 'sobre', 'dime', 'quiero', 'necesito',
+            'información', 'medicina', 'medicamento', 'dolor', 'enfermedad',
+            'síntoma', 'tratamiento', 'salud', 'médico', 'hospital', 'cómo',
+            'cuándo', 'dónde', 'por', 'favor', 'ayuda', 'gracias', 'es', 'está'
         ]
         
         text_lower = text.lower()
-        spanish_word_count = sum(1 for word in spanish_words if word in text_lower)
+        spanish_count = sum(1 for word in spanish_indicators if word in text_lower)
         
-        # Also check for Spanish accents and ñ
+        # Check for Spanish characters
         import re
-        has_spanish_chars = bool(re.search(r'[ñáéíóúü]', text, re.IGNORECASE))
+        has_spanish_chars = bool(re.search(r'[ñáéíóúü¿¡]', text, re.IGNORECASE))
         
-        # Consider it Spanish if it has Spanish words or Spanish characters
-        return spanish_word_count >= 1 or has_spanish_chars
-
-    def basic_format_response(self, raw_data: str, original_question: str, tool_name: str, is_spanish: bool = False) -> str:
-        """Basic fallback formatting if GPT formatting fails"""
-        if is_spanish:
-            return f"""### Resultados de Búsqueda en {tool_name.upper()}
-
-**Su Pregunta:** {original_question}
-
-**Resultados:**
-{raw_data}
-
----
-> **Aviso Médico:** Esta información es solo para fines educativos. Siempre consulte con profesionales de la salud para decisiones médicas."""
-        else:
-            return f"""### {tool_name.upper()} Search Results
-
-**Your Question:** {original_question}
-
-**Results:**
-{raw_data}
-
----
-> **Medical Disclaimer:** This information is for educational purposes only. Always consult with healthcare professionals for medical decisions."""
-
-    async def save_session_info(self, session_id: str, message_count: int, provider: str):
-        """Save session metadata to Redis"""
-        if self.redis_client:
+        return "es" if spanish_count >= 1 or has_spanish_chars else "en"
+    
+    async def save_conversation_memory(self, session_id: str, memory: ConversationMemory) -> bool:
+        """Save conversation to Redis for persistence"""
+        if not self.redis_client:
+            return False
+            
+        try:
+            memory_key = f"conversation:{session_id}"
+            memory_data = memory.model_dump_json()
+            
+            # Add to conversation list
+            await self.redis_client.lpush(memory_key, memory_data)
+            
+            # Keep only last 50 messages
+            await self.redis_client.ltrim(memory_key, 0, 49)
+            
+            # Set expiration (7 days)
+            await self.redis_client.expire(memory_key, 604800)
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error saving conversation memory: {e}")
+            return False
+    
+    async def update_session_info(self, session_id: str, tool_used: Optional[ToolType] = None, 
+                             prompt_mode: Optional[PromptMode] = None) -> bool:
+        """Update session information in Redis"""
+        if not self.redis_client:
+            return False
+            
+        try:
+            session_key = f"session:{session_id}"
+            
+            # Get existing session or create new
+            existing_data = await self.redis_client.hgetall(session_key)
+            
             session_data = {
                 "session_id": session_id,
-                "message_count": message_count,
                 "last_activity": datetime.now().isoformat(),
-                "created_at": datetime.now().isoformat(),
-                "provider": provider
+                "provider": self.provider_manager.current_provider,
+                "message_count": str(int(existing_data.get("message_count", "0")) + 1)
             }
-            await self.redis_client.hset(
-                f"session:{session_id}", 
-                mapping=session_data
-            )
-            # Set expiration (24 hours)
-            await self.redis_client.expire(f"session:{session_id}", 86400)
+            
+            # Add creation time if new session
+            if not existing_data:
+                session_data["created_at"] = datetime.now().isoformat()
+                tools_used = []
+                modes_used = []
+            else:
+                session_data["created_at"] = existing_data.get("created_at", datetime.now().isoformat())
+                
+                # Parse existing arrays safely
+                try:
+                    tools_used = json.loads(existing_data.get("tools_used", "[]"))
+                except (json.JSONDecodeError, TypeError):
+                    tools_used = []
+                    
+                try:
+                    modes_used = json.loads(existing_data.get("prompt_modes_used", "[]"))
+                except (json.JSONDecodeError, TypeError):
+                    modes_used = []
+            
+            # Update tools used
+            if tool_used and tool_used.value not in tools_used:
+                tools_used.append(tool_used.value)
+            session_data["tools_used"] = json.dumps(tools_used)
+            
+            # Update prompt modes used
+            if prompt_mode and prompt_mode.value not in modes_used:
+                modes_used.append(prompt_mode.value)
+            session_data["prompt_modes_used"] = json.dumps(modes_used)
+            
+            await self.redis_client.hset(session_key, mapping=session_data)
+            await self.redis_client.expire(session_key, 86400)  # 24 hours
+            
+            logger.debug(f"Updated session {session_id}: tools={tools_used}, modes={modes_used}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error updating session info: {e}")
+            return False
 
-    async def get_session_info(self, session_id: str) -> Optional[Dict]:
-        """Get session metadata from Redis"""
+
+    async def cleanup(self):
+        """Cleanup resources"""
+        logger.info("🧹 Cleaning up Hybrid Chat System...")
+        
+        if self.medical_tools:
+            await self.medical_tools.cleanup()
+        
+        if self.prompt_manager:
+            await self.prompt_manager.cleanup()
+            
         if self.redis_client:
-            session_data = await self.redis_client.hgetall(f"session:{session_id}")
-            return session_data if session_data else None
-        return None
+            await self.redis_client.close()
+        
+        self.chat_engines.clear()
 
-# Global chat configuration
-chat_config = ChatConfig()
+# Global configuration instance
+chat_config = HybridChatConfig()
 
-# Startup event
+# ============================================================================
+# STARTUP AND SHUTDOWN EVENTS
+# ============================================================================
+
 @app.on_event("startup")
 async def startup_event():
     await chat_config.initialize()
 
-# Shutdown event
 @app.on_event("shutdown")
 async def shutdown_event():
-    if chat_config.redis_client:
-        await chat_config.redis_client.close()
-    await chat_config.medical_tools.cleanup()
+    await chat_config.cleanup()
 
-# Health check endpoint
-@app.get("/health")
+# ============================================================================
+# HEALTH CHECK AND SYSTEM STATUS
+# ============================================================================
+
+@app.get("/health", response_model=HealthCheck)
 async def health_check():
-    medical_status = chat_config.medical_tools.get_status()
-    return {
-        "status": "healthy",
-        "timestamp": datetime.now(),
-        "services": {
-            "current_provider": chat_config.provider_manager.current_provider,
-            "available_providers": chat_config.provider_manager.get_available_providers(),
-            "redis": "connected" if chat_config.redis_client else "disconnected",
-            "medical_tools": medical_status["enabled_tools"],
-            "gpt_formatting": "enabled"
+    """Comprehensive health check for all system components"""
+    services_status = {
+        "provider_manager": {
+            "status": "healthy" if chat_config.provider_manager else "error",
+            "current_provider": chat_config.provider_manager.current_provider if chat_config.provider_manager else None,
+            "available_providers": chat_config.provider_manager.get_available_providers() if chat_config.provider_manager else []
+        },
+        "redis": {
+            "status": "connected" if chat_config.redis_client else "disconnected",
+            "url": os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        },
+        "medical_tools": {
+            "status": "healthy" if chat_config.medical_tools else "error",
+            "enabled_tools": list(chat_config.medical_tools.enabled_tools) if chat_config.medical_tools else [],
+            "session_active": chat_config.medical_tools.session is not None if chat_config.medical_tools else False
+        },
+        "prompt_manager": {
+            "status": "healthy" if chat_config.prompt_manager else "error",
+            "prompts_loaded": len(chat_config.prompt_manager.prompts_cache) if chat_config.prompt_manager else 0,
+            "yaml_exists": chat_config.prompt_manager.yaml_path.exists() if chat_config.prompt_manager else False
+        },
+        "chat_engines": {
+            "active_engines": len(chat_config.chat_engines),
+            "status": "healthy"
         }
     }
-
-# Provider management endpoints
-@app.get("/providers")
-async def list_providers():
-    """List all available providers and their status"""
-    providers = []
-    for provider_name in chat_config.provider_manager.get_available_providers():
-        info = chat_config.provider_manager.get_provider_info(provider_name)
-        info["is_current"] = provider_name == chat_config.provider_manager.current_provider
-        providers.append(info)
     
-    return {"providers": providers}
-
-@app.get("/providers/current")
-async def get_current_provider():
-    """Get current active provider information"""
-    return chat_config.provider_manager.get_provider_info()
-
-@app.post("/providers/switch")
-async def switch_provider(request: ProviderSwitchRequest):
-    """Switch to a different provider"""
-    if request.provider not in chat_config.provider_manager.get_available_providers():
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Provider '{request.provider}' not available. Available: {chat_config.provider_manager.get_available_providers()}"
-        )
-    
-    success = chat_config.switch_provider(request.provider)
-    if not success:
-        raise HTTPException(status_code=500, detail="Failed to switch provider")
-    
-    return {
-        "message": f"Successfully switched to {request.provider}",
-        "provider_info": chat_config.provider_manager.get_provider_info()
-    }
-
-# Chat endpoint
-@app.post("/chat", response_model=ChatResponse)
-async def chat_endpoint(request: ChatMessage):
-    try:
-        # Generate session ID if not provided
-        if not request.session_id:
-            request.session_id = str(uuid.uuid4())
-        
-        # Determine which provider to use
-        active_provider = request.provider or chat_config.provider_manager.current_provider
-        
-        # Get or create chat engine for this session
-        chat_engine = chat_config.get_or_create_chat_engine(
-            request.session_id, 
-            request.provider
-        )
-        
-        # Process the message
-        response = await asyncio.to_thread(
-            chat_engine.chat, 
-            request.message
-        )
-        
-        # Save session info
-        session_info = await chat_config.get_session_info(request.session_id)
-        message_count = int(session_info.get("message_count", 0)) + 1 if session_info else 1
-        await chat_config.save_session_info(request.session_id, message_count, active_provider)
-        
-        return ChatResponse(
-            response=str(response),
-            session_id=request.session_id,
-            timestamp=datetime.now(),
-            provider=active_provider,
-            tokens_used=None
-        )
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Chat error: {str(e)}")
-
-# ============ ENHANCED MEDICAL TOOLS ENDPOINTS ============
-
-# New GPT formatting endpoint
-@app.post("/medical/format-response")
-async def format_medical_response(request: GPTFormattingRequest):
-    """Format medical response using GPT"""
-    try:
-        formatted_response = await chat_config.format_medical_response_with_gpt(
-            request.raw_data,
-            request.original_question,
-            request.tool_name,
-            request.extracted_term
-        )
-        
-        return {
-            "formatted_response": formatted_response,
-            "original_question": request.original_question,
-            "tool_used": request.tool_name,
-            "extracted_term": request.extracted_term
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Formatting error: {str(e)}")
-
-# MCP Management endpoints
-@app.get("/mcp/status")
-async def mcp_status():
-    tools_status = chat_config.medical_tools.get_status()
-    return {
-        "medical_tools": tools_status,
-        "current_provider": chat_config.provider_manager.current_provider,
-        "integration_ready": True,
-        "gpt_formatting": "enabled"
-    }
-
-# Medical endpoints for direct testing
-@app.post("/medical/fda-search")
-async def fda_search(drug_name: str):
-    """Buscar medicamento en FDA"""
-    result = await chat_config.medical_tools.search_fda_drug(drug_name)
-    return {"result": result}
-
-@app.post("/medical/pubmed-search") 
-async def pubmed_search(query: str, max_results: int = 3):
-    """Buscar en PubMed"""
-    result = await chat_config.medical_tools.search_pubmed(query, max_results)
-    return {"result": result}
-
-@app.post("/medical/clinical-trials")
-async def clinical_trials_search(condition: str, max_results: int = 3):
-    """Buscar ensayos clínicos"""
-    result = await chat_config.medical_tools.search_clinical_trials(condition, max_results)
-    return {"result": result}
-
-@app.post("/medical/icd10-search")
-async def icd10_search(term: str):
-    """Buscar códigos ICD-10"""
-    result = await chat_config.medical_tools.search_icd10(term)
-    return {"result": result}
-
-@app.post("/medical/scrape-site")
-async def scrape_site(url: str, search_term: str = None):
-    """Hacer scraping de sitio médico"""
-    result = await chat_config.medical_tools.scrape_medical_site(url, search_term)
-    return {"result": result}
-
-@app.get("/medical/tools")
-async def list_medical_tools():
-    """Listar herramientas médicas disponibles"""
-    return chat_config.medical_tools.get_available_functions()
-
-@app.post("/medical/tools/{tool_name}/enable")
-async def enable_medical_tool(tool_name: str):
-    """Habilitar herramienta médica específica"""
-    success = chat_config.medical_tools.enable_tool(tool_name)
-    if success:
-        return {"message": f"Tool {tool_name} enabled successfully"}
-    else:
-        raise HTTPException(status_code=400, detail=f"Invalid tool name: {tool_name}")
-
-@app.post("/medical/tools/{tool_name}/disable")
-async def disable_medical_tool(tool_name: str):
-    """Deshabilitar herramienta médica específica"""
-    success = chat_config.medical_tools.disable_tool(tool_name)
-    return {"message": f"Tool {tool_name} disabled"}
-
-# ============ ENHANCED MCP + GPT INTEGRATION ENDPOINT ============
-
-@app.post("/medical/enhanced-search")
-async def enhanced_medical_search(
-    query: str, 
-    tool_name: str, 
-    original_question: str = None,
-    format_with_gpt: bool = True
-):
-    """
-    Enhanced medical search with automatic GPT formatting
-    This endpoint combines MCP search with GPT formatting in one call
-    """
-    try:
-        # Validate tool
-        available_tools = ["fda", "pubmed", "clinicaltrials", "icd10", "scraping"]
-        if tool_name not in available_tools:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Invalid tool. Available: {available_tools}"
-            )
-        
-        # Perform MCP search based on tool
-        raw_result = None
-        
-        if tool_name == "fda":
-            raw_result = await chat_config.medical_tools.search_fda_drug(query)
-        elif tool_name == "pubmed":
-            raw_result = await chat_config.medical_tools.search_pubmed(query, max_results=3)
-        elif tool_name == "clinicaltrials":
-            raw_result = await chat_config.medical_tools.search_clinical_trials(query, max_results=3)
-        elif tool_name == "icd10":
-            raw_result = await chat_config.medical_tools.search_icd10(query)
-        elif tool_name == "scraping":
-            # Default to Mayo Clinic for scraping
-            raw_result = await chat_config.medical_tools.scrape_medical_site(
-                "https://www.mayoclinic.org", 
-                query
-            )
-        
-        if not raw_result:
-            return {
-                "error": f"No results found for '{query}' in {tool_name}",
-                "raw_result": None,
-                "formatted_result": None
-            }
-        
-        # Format with GPT if requested
-        formatted_result = None
-        if format_with_gpt:
-            try:
-                formatted_result = await chat_config.format_medical_response_with_gpt(
-                    raw_result,
-                    original_question or query,
-                    tool_name,
-                    query
-                )
-            except Exception as format_error:
-                print(f"GPT formatting failed: {format_error}")
-                # Fallback to basic formatting
-                formatted_result = chat_config.basic_format_response(
-                    raw_result, 
-                    original_question or query, 
-                    tool_name
-                )
-        
-        return {
-            "success": True,
-            "tool_used": tool_name,
-            "search_term": query,
-            "original_question": original_question,
-            "raw_result": raw_result,
-            "formatted_result": formatted_result,
-            "timestamp": datetime.now().isoformat()
-        }
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Enhanced search failed: {str(e)}"
-        )
-
-# Get session info
-@app.get("/sessions/{session_id}", response_model=SessionInfo)
-async def get_session(session_id: str):
-    session_info = await chat_config.get_session_info(session_id)
-    
-    if not session_info:
-        raise HTTPException(status_code=404, detail="Session not found")
-    
-    return SessionInfo(
-        session_id=session_info["session_id"],
-        created_at=datetime.fromisoformat(session_info["created_at"]),
-        message_count=int(session_info["message_count"]),
-        last_activity=datetime.fromisoformat(session_info["last_activity"]),
-        provider=session_info.get("provider", "unknown")
+    return HealthCheck(
+        status="healthy",
+        timestamp=datetime.now(),
+        services=services_status,
+        version="2.0.0"
     )
 
-# List active sessions
-@app.get("/sessions")
-async def list_sessions():
-    if not chat_config.redis_client:
-        return {"sessions": []}
-    
-    session_keys = await chat_config.redis_client.keys("session:*")
-    sessions = []
-    
-    for key in session_keys:
-        session_data = await chat_config.redis_client.hgetall(key)
-        if session_data:
-            sessions.append({
-                "session_id": session_data["session_id"],
-                "message_count": int(session_data["message_count"]),
-                "last_activity": session_data["last_activity"],
-                "provider": session_data.get("provider", "unknown")
-            })
-    
-    return {"sessions": sessions}
+# ============================================================================
+# HYBRID CHAT ENDPOINT - MAIN UNIFIED ENDPOINT
+# ============================================================================
 
-# Clear session
-@app.delete("/sessions/{session_id}")
-async def clear_session(session_id: str):
+@app.post("/chat", response_model=ChatResponse)
+async def unified_chat_endpoint(request: ChatRequest):
+    """
+    Unified chat endpoint that handles:
+    1. General conversation (no tools)
+    2. Tool-enhanced conversation (with MCP tools)
+    3. Different prompt modes (medical, pediatric, emergency, etc.)
+    """
     try:
-        # Remove from in-memory chat engines (all provider variants)
+        # Generate session ID if not provided
+        if not request.session:
+            request.session = f"chat_{uuid.uuid4().hex[:12]}"
+        
+        # Detect language if auto
+        detected_language = chat_config.detect_language(request.message)
+        
+        # Get chat engine with appropriate prompt mode
+        chat_engine = await chat_config.get_or_create_chat_engine(
+            request.session, 
+            request.prompt_mode
+        )
+        
+        response_data = {}
+        tool_used = None
+        raw_tool_data = None
+        
+        # Check if specific tool is requested
+        if request.tools:
+            logger.info(f"Processing tool-enhanced request: {request.tools.value}")
+            
+            # Extract search term from message
+            search_term = await extract_medical_term(request.message, request.tools)
+            
+            # Execute tool search
+            tool_result = await execute_tool_search(request.tools, search_term)
+            
+            if tool_result.success:
+                # Lógica especial para ICD-10: respuesta directa sin LLM
+                if request.tools == ToolType.ICD10:
+                    # Para ICD-10, usar datos directos de la herramienta tal como vienen
+                    response_data["response"] = tool_result.processed_result
+                    tool_used = request.tools
+                    raw_tool_data = tool_result.raw_result
+                
+                else:
+                    # Para otras herramientas, usar prompt específico del YAML
+                    tool_prompt_config = await chat_config.prompt_manager.get_tool_prompt(request.tools)
+                    enhanced_prompt = tool_prompt_config.format(
+                        user_message=request.message,
+                        tool_data=tool_result.processed_result
+                    )
+                    
+                    llm_response = await asyncio.to_thread(chat_engine.chat, enhanced_prompt)
+                    response_data["response"] = str(llm_response)
+                    tool_used = request.tools
+                    raw_tool_data = tool_result.raw_result
+                
+            else:
+                # Tool failed, use regular chat
+                logger.warning(f"Tool {request.tools.value} failed: {tool_result.error_message}")
+                llm_response = await asyncio.to_thread(chat_engine.chat, request.message)
+                response_data["response"] = str(llm_response)
+                response_data["tool_error"] = tool_result.error_message
+        else:
+            # Regular chat without tools
+            llm_response = await asyncio.to_thread(chat_engine.chat, request.message)
+            response_data["response"] = str(llm_response)
+        
+        # Save conversation memory
+        conversation_memory = ConversationMemory(
+            user_message=request.message,
+            tool_used=tool_used,
+            raw_tool_data=raw_tool_data,
+            assistant_response=response_data["response"],
+            timestamp=datetime.now(),
+            prompt_mode=request.prompt_mode,
+            metadata={
+                "language": detected_language,
+                "session": request.session
+            }
+        )
+        
+        await chat_config.save_conversation_memory(request.session, conversation_memory)
+        
+        # Update session info
+        await chat_config.update_session_info(request.session, tool_used, request.prompt_mode)
+        
+        # Get session info for response
+        session_info = await chat_config.redis_client.hgetall(f"session:{request.session}") if chat_config.redis_client else {}
+        message_count = int(session_info.get("message_count", "1"))
+        
+        return ChatResponse(
+            status=ResponseStatus.SUCCESS,
+            data=response_data,
+            message="Chat processed successfully",
+            session_id=request.session,
+            timestamp=datetime.now(),
+            provider=chat_config.provider_manager.current_provider,
+            tool_used=tool_used,
+            language_detected=detected_language,
+            conversation_count=message_count,
+            prompt_mode_used=request.prompt_mode
+        )
+        
+    except Exception as e:
+        logger.error(f"Chat endpoint error: {e}")
+        return ChatResponse(
+            status=ResponseStatus.ERROR,
+            data={"error": str(e)},
+            message=f"Chat processing failed: {str(e)}",
+            session_id=request.session,
+            timestamp=datetime.now(),
+            provider=chat_config.provider_manager.current_provider if chat_config.provider_manager else "unknown"
+        )
+
+# ============================================================================
+# SPECIALIZED TOOL ENDPOINTS
+# ============================================================================
+
+@app.post("/tools/fda", response_model=ToolResponse)
+async def fda_search_endpoint(request: ToolRequest):
+    """Direct FDA drug search endpoint"""
+    return await execute_tool_endpoint(ToolType.FDA, request)
+
+@app.post("/tools/pubmed", response_model=ToolResponse)
+async def pubmed_search_endpoint(request: ToolRequest):
+    """Direct PubMed literature search endpoint"""
+    return await execute_tool_endpoint(ToolType.PUBMED, request)
+
+@app.post("/tools/clinical-trials", response_model=ToolResponse)
+async def clinical_trials_endpoint(request: ToolRequest):
+    """Direct Clinical Trials search endpoint"""
+    return await execute_tool_endpoint(ToolType.CLINICAL_TRIALS, request)
+
+@app.post("/tools/icd10", response_model=ToolResponse)
+async def icd10_search_endpoint(request: ToolRequest):
+    """Direct ICD-10 codes search endpoint"""
+    return await execute_tool_endpoint(ToolType.ICD10, request)
+
+@app.post("/tools/scraping", response_model=ToolResponse)
+async def web_scraping_endpoint(request: ToolRequest):
+    """Direct web scraping endpoint"""
+    # For scraping, query should be a URL
+    return await execute_tool_endpoint(ToolType.SCRAPING, request)
+
+# ============================================================================
+# TOOL EXECUTION HELPERS
+# ============================================================================
+
+async def execute_tool_endpoint(tool_type: ToolType, request: ToolRequest) -> ToolResponse:
+    """Execute tool endpoint with standardized response"""
+    try:
+        # Execute tool search
+        tool_result = await execute_tool_search(tool_type, request.query, request.max_results)
+        
+        if not tool_result.success:
+            return ToolResponse(
+                status=ResponseStatus.ERROR,
+                data={"error": tool_result.error_message},
+                message=f"{tool_type.value} search failed",
+                session_id=request.session,
+                timestamp=datetime.now(),
+                tool_used=tool_type,
+                error_details={"query": request.query}
+            )
+        
+        response_data = {
+            "query": request.query,
+            "results": tool_result.processed_result
+        }
+        
+        # Format with LLM if requested
+        if request.format_response and tool_result.processed_result:
+            try:
+                formatted_result = await format_tool_response_with_llm(
+                    tool_result, request.query, request.language
+                )
+                response_data["formatted_results"] = formatted_result
+            except Exception as e:
+                logger.warning(f"LLM formatting failed: {e}")
+                response_data["formatted_results"] = tool_result.processed_result
+        
+        return ToolResponse(
+            status=ResponseStatus.SUCCESS,
+            data=response_data,
+            message=f"{tool_type.value} search completed successfully",
+            session_id=request.session,
+            timestamp=datetime.now(),
+            tool_used=tool_type,
+            raw_data=tool_result.raw_result,
+            formatted_data=response_data.get("formatted_results"),
+            search_term=request.query,
+            results_count=tool_result.metadata.get("results_count", 0) if tool_result.metadata else 0
+        )
+        
+    except Exception as e:
+        logger.error(f"Tool endpoint error ({tool_type.value}): {e}")
+        return ToolResponse(
+            status=ResponseStatus.ERROR,
+            data={"error": str(e)},
+            message=f"{tool_type.value} search failed",
+            session_id=request.session,
+            timestamp=datetime.now(),
+            tool_used=tool_type
+        )
+
+async def execute_tool_search(tool_type: ToolType, query: str, max_results: int = 3):
+    """Execute search on specific medical tool"""
+    try:
+        medical_tools = chat_config.medical_tools
+        
+        if tool_type == ToolType.FDA:
+            return await medical_tools.search_fda_drug(query, max_results)
+        elif tool_type == ToolType.PUBMED:
+            return await medical_tools.search_pubmed(query, max_results)
+        elif tool_type == ToolType.CLINICAL_TRIALS:
+            return await medical_tools.search_clinical_trials(query, max_results)
+        elif tool_type == ToolType.ICD10:
+            return await medical_tools.search_icd10(query, max_results)
+        elif tool_type == ToolType.SCRAPING:
+            # Para scraping, separar URL del término de búsqueda
+            if "http" in query:
+                return await medical_tools.scrape_medical_site(query, None)
+            else:
+                # Si no es URL, buscar término general
+                return await medical_tools.scrape_medical_site("https://www.mayoclinic.org", query)
+        else:
+            raise ValueError(f"Unknown tool type: {tool_type}")
+            
+    except Exception as e:
+        logger.error(f"Tool search error: {e}")
+        from models import ToolResult
+        return ToolResult(
+            success=False,
+            tool_name=tool_type,
+            query=query,
+            error_message=str(e)
+        )
+
+
+async def extract_medical_term(message: str, tool_type: ToolType) -> str:
+    """
+    Extraer término médico leyendo extraction_prompts del YAML directamente
+    """
+    try:
+        # Leer el YAML directamente
+        with open('prompts.yml', 'r', encoding='utf-8') as file:
+            yaml_data = yaml.safe_load(file)
+        
+        # Obtener prompt específico
+        tool_name = tool_type.value
+        if 'extraction_prompts' in yaml_data and tool_name in yaml_data['extraction_prompts']:
+            extraction_template = yaml_data['extraction_prompts'][tool_name]['system_prompt']
+            prompt = extraction_template.format(message=message)
+        else:
+            # Fallback
+            prompt = f"Extract medical term from: {message}"
+
+        # Usar LLM para extraer el término
+        temp_session = f"extract_{uuid.uuid4().hex[:8]}"
+        chat_engine = await chat_config.get_or_create_chat_engine(temp_session, PromptMode.MEDICAL)
+        
+        llm_response = await asyncio.to_thread(chat_engine.chat, prompt)
+        extracted_term = str(llm_response).strip()
+        
+        # Limpiar respuesta del LLM
+        extracted_term = re.sub(r'\*+', '', extracted_term)
+        extracted_term = extracted_term.strip('."\'()-')
+        
+        if not extracted_term:
+            logger.warning(f"LLM returned empty term for: {message}")
+            return message[:50]
+            
+        logger.info(f"LLM extracted term: '{extracted_term}' from: '{message}' for {tool_type.value}")
+        return extracted_term
+        
+    except Exception as e:
+        logger.error(f"Error in LLM term extraction: {e}")
+        return message.replace('¿', '').replace('?', '').strip()[:50]
+
+
+# ============================================================================
+#async def extract_medical_term(message: str, tool_type: ToolType) -> str:
+#    """
+#    Extraer término médico relevante del mensaje, limpiando signos de puntuación
+#    y palabras irrelevantes para búsqueda en herramientas médicas
+#    """
+#    try:
+#        # 1. Convertir a minúsculas y limpiar
+#        message_clean = message.lower().strip()
+#        
+#        # 2. Remover signos de puntuación y caracteres especiales
+#        # Mantener solo letras, números, espacios y algunos caracteres especiales médicos
+#        message_clean = re.sub(r'[¿?¡!.,;:()\[\]{}"\'-]', ' ', message_clean)
+#        
+#        # 3. Remover palabras comunes (stop words) en español e inglés
+#        stop_words = [
+#            # Español
+#            'que', 'qué', 'es', 'son', 'está', 'están', 'para', 'sirve', 'sirven',
+#            'sobre', 'información', 'dime', 'cuéntame', 'explica', 'explicar',
+#            'quiero', 'necesito', 'saber', 'conocer', 'ayuda', 'ayúdame',
+#            'cómo', 'cuándo', 'dónde', 'por', 'favor', 'gracias', 'hola',
+#            'la', 'el', 'los', 'las', 'un', 'una', 'unos', 'unas',
+#            'me', 'te', 'se', 'nos', 'le', 'les', 'lo', 'los', 'la', 'las',
+#            'de', 'del', 'con', 'sin', 'en', 'por', 'para', 'desde', 'hasta',
+#            'puede', 'pueden', 'puedo', 'podemos', 'tiene', 'tienen', 'tengo',
+#            # Inglés
+#            'what', 'is', 'are', 'for', 'about', 'tell', 'me', 'how', 'when', 
+#            'where', 'help', 'please', 'thanks', 'hello', 'the', 'a', 'an',
+#            'and', 'or', 'but', 'with', 'without', 'can', 'could', 'would',
+#            'should', 'will', 'have', 'has', 'had', 'do', 'does', 'did'
+#        ]
+#        
+#        # 4. Dividir en palabras y filtrar
+#        words = message_clean.split()
+#        filtered_words = []
+#        
+#        for word in words:
+#            # Limpiar espacios extra de cada palabra
+#            word = word.strip()
+#            # Filtrar palabras muy cortas (menos de 3 caracteres) y stop words
+#            if len(word) >= 3 and word not in stop_words:
+#                filtered_words.append(word)
+#        
+#        # 5. Lógica específica por tipo de herramienta
+#        if tool_type == ToolType.FDA:
+#            # Para FDA, priorizar términos que parezcan nombres de medicamentos
+#            drug_keywords = [
+#                # Medicamentos comunes en español
+#                'aspirina', 'ibuprofeno', 'paracetamol', 'diclofenaco', 'naproxeno',
+#                'omeprazol', 'ranitidina', 'loratadina', 'cetirizina', 'dipirona',
+#                'acetaminofén', 'ketoprofeno', 'piroxicam', 'meloxicam',
+#                # Medicamentos comunes en inglés
+#                'aspirin', 'ibuprofen', 'acetaminophen', 'diclofenac', 'naproxen',
+#                'omeprazole', 'ranitidine', 'loratadine', 'cetirizine', 'ketorolac',
+#                'ketoprofen', 'piroxicam', 'meloxicam', 'tramadol', 'codeine'
+#            ]
+#            
+#            # Buscar coincidencias directas con medicamentos conocidos
+#            for word in filtered_words:
+#                for drug in drug_keywords:
+#                    if drug in word or word in drug:
+#                        return drug  # Devolver el nombre conocido del medicamento
+#            
+#            # Si no encuentra coincidencias directas, buscar palabras que terminen en sufijos médicos
+#            medical_suffixes = ['ina', 'eno', 'ol', 'ona', 'ato', 'ide', 'ine', 'ate']
+#            for word in filtered_words:
+#                if any(word.endswith(suffix) for suffix in medical_suffixes):
+#                    return word
+#        
+#        elif tool_type == ToolType.PUBMED:
+#            # Para PubMed, mantener términos médicos/científicos más generales
+#            medical_terms = [
+#                'diabetes', 'hipertension', 'cancer', 'carcinoma', 'tumor',
+#                'cardiovascular', 'neurologico', 'psiquiatrico', 'pediatrico',
+#                'geriatrico', 'oncologia', 'cardiologia', 'neurologia'
+#            ]
+#            
+#            for word in filtered_words:
+#                if word in medical_terms or len(word) > 6:  # Términos largos suelen ser médicos
+#                    return word
+#        
+#        elif tool_type == ToolType.ICD10:
+#            # Para ICD-10, buscar síntomas o condiciones médicas
+#            condition_keywords = [
+#                'dolor', 'fiebre', 'tos', 'cefalea', 'mareo', 'nausea',
+#                'diarrea', 'estreñimiento', 'fatiga', 'insomnio',
+#                'pain', 'fever', 'cough', 'headache', 'nausea', 'diarrhea'
+#            ]
+#            
+#            for word in filtered_words:
+#                if word in condition_keywords:
+#                    return word
+#        
+#        elif tool_type == ToolType.CLINICAL_TRIALS:
+#            # Para ensayos clínicos, similar a PubMed pero más específico
+#            pass
+#        
+#        # 6. Fallback: devolver la primera palabra relevante encontrada
+#        if filtered_words:
+#            # Priorizar palabras más largas (suelen ser más específicas)
+#            filtered_words.sort(key=len, reverse=True)
+#            return filtered_words[0]
+#        
+#        # 7. Último fallback: limpiar el mensaje original y devolver
+#        # Remover solo signos de puntuación pero mantener palabras
+#        fallback = re.sub(r'[¿?¡!.,;:()\[\]{}"\'-]+', '', message.lower().strip())
+#        fallback_words = [w.strip() for w in fallback.split() if len(w.strip()) >= 3]
+#        
+#        if fallback_words:
+#            return fallback_words[0]
+#        
+#        # Si todo falla, devolver el mensaje original limpio
+#        return re.sub(r'[¿?¡!.,;:()]+', '', message.strip())
+#        
+#    except Exception as e:
+#        logger.error(f"Error in extract_medical_term: {e}")
+#        # En caso de error, devolver mensaje limpio
+#        return re.sub(r'[¿?¡!.,;:()]+', '', message.strip())
+
+async def format_tool_response_with_llm(tool_result, original_query: str, language: str = "auto") -> str:
+    """Format tool response using LLM for better presentation"""
+    try:
+        # Create a temporary chat engine for formatting
+        temp_session = f"format_{uuid.uuid4().hex[:8]}"
+        chat_engine = await chat_config.get_or_create_chat_engine(temp_session, PromptMode.MEDICAL)
+        
+        formatting_prompt = f"""
+        The user asked: "{original_query}"
+        
+        Raw data from {tool_result.tool_name.value.upper()}:
+        {tool_result.processed_result}
+        
+        Please format this information in a professional, readable way using markdown.
+        Respond in {'Spanish' if language == 'es' else 'English'}.
+        Include appropriate medical disclaimers.
+        """
+        
+        response = await asyncio.to_thread(chat_engine.chat, formatting_prompt)
+        return str(response)
+        
+    except Exception as e:
+        logger.error(f"LLM formatting error: {e}")
+        return tool_result.processed_result
+
+# ============================================================================
+# PROVIDER MANAGEMENT ENDPOINTS
+# ============================================================================
+
+@app.get("/providers", response_model=StandardResponse)
+async def list_providers():
+    """List all available LLM providers"""
+    try:
+        providers = []
+        for provider_name in chat_config.provider_manager.get_available_providers():
+            info = chat_config.provider_manager.get_provider_info(provider_name)
+            info["is_current"] = provider_name == chat_config.provider_manager.current_provider
+            providers.append(info)
+        
+        return create_success_response(
+            data={"providers": providers},
+            message="Providers listed successfully"
+        )
+        
+    except Exception as e:
+        return create_error_response(f"Error listing providers: {str(e)}")
+
+@app.get("/providers/current", response_model=StandardResponse)
+async def get_current_provider():
+    """Get current active provider information"""
+    try:
+        provider_info = chat_config.provider_manager.get_provider_info()
+        return create_success_response(
+            data={"current_provider": provider_info},
+            message="Current provider retrieved successfully"
+        )
+    except Exception as e:
+        return create_error_response(f"Error getting current provider: {str(e)}")
+
+# ============================================================================
+# PROMPT MANAGEMENT ENDPOINTS
+# ============================================================================
+
+@app.get("/prompts", response_model=StandardResponse)
+async def list_prompts():
+    """List all available prompt modes"""
+    try:
+        prompts_info = await chat_config.prompt_manager.get_prompts_info()
+        return create_success_response(
+            data={"prompts": prompts_info},
+            message="Prompts information retrieved successfully"
+        )
+    except Exception as e:
+        return create_error_response(f"Error getting prompts info: {str(e)}")
+
+@app.post("/prompts/reload", response_model=StandardResponse)
+async def reload_prompts():
+    """Hot reload prompts from YAML file"""
+    try:
+        success = await chat_config.prompt_manager.reload_prompts()
+        if success:
+            # Clear chat engines to use new prompts
+            chat_config.chat_engines.clear()
+            return create_success_response(
+                data={"reloaded": True},
+                message="Prompts reloaded successfully"
+            )
+        else:
+            return create_error_response("Failed to reload prompts")
+    except Exception as e:
+        return create_error_response(f"Error reloading prompts: {str(e)}")
+
+# ============================================================================
+# SESSION MANAGEMENT ENDPOINTS
+# ============================================================================
+
+@app.get("/sessions/{session_id}", response_model=StandardResponse)
+async def get_session_info(session_id: str):
+    """Get detailed session information"""
+    try:
+        if not chat_config.redis_client:
+            return create_error_response("Redis not available")
+        
+        session_data = await chat_config.redis_client.hgetall(f"session:{session_id}")
+        
+        if not session_data:
+            return create_error_response("Session not found", "SESSION_NOT_FOUND")
+        
+        # Parse JSON fields
+        session_data["tools_used"] = json.loads(session_data.get("tools_used", "[]"))
+        session_data["prompt_modes_used"] = json.loads(session_data.get("prompt_modes_used", "[]"))
+        
+        return create_success_response(
+            data={"session": session_data},
+            message="Session information retrieved successfully",
+            session_id=session_id
+        )
+        
+    except Exception as e:
+        return create_error_response(f"Error getting session info: {str(e)}")
+
+@app.get("/sessions", response_model=StandardResponse)
+async def list_active_sessions():
+    """List all active sessions"""
+    try:
+        if not chat_config.redis_client:
+            return create_error_response("Redis not available")
+        
+        session_keys = await chat_config.redis_client.keys("session:*")
+        sessions = []
+        
+        for key in session_keys:
+            session_data = await chat_config.redis_client.hgetall(key)
+            if session_data:
+                session_data["tools_used"] = json.loads(session_data.get("tools_used", "[]"))
+                session_data["prompt_modes_used"] = json.loads(session_data.get("prompt_modes_used", "[]"))
+                sessions.append(session_data)
+        
+        return create_success_response(
+            data={"sessions": sessions, "count": len(sessions)},
+            message="Active sessions retrieved successfully"
+        )
+        
+    except Exception as e:
+        return create_error_response(f"Error listing sessions: {str(e)}")
+
+@app.delete("/sessions/{session_id}", response_model=StandardResponse)
+async def clear_session(session_id: str):
+    """Clear specific session data"""
+    try:
+        # Remove chat engines
         keys_to_remove = [k for k in chat_config.chat_engines.keys() if k.startswith(session_id)]
         for key in keys_to_remove:
             del chat_config.chat_engines[key]
@@ -620,93 +877,57 @@ async def clear_session(session_id: str):
         # Remove from Redis
         if chat_config.redis_client:
             await chat_config.redis_client.delete(f"session:{session_id}")
+            await chat_config.redis_client.delete(f"conversation:{session_id}")
         
-        return {"message": f"Session {session_id} cleared successfully"}
+        return create_success_response(
+            data={"cleared": True},
+            message=f"Session {session_id} cleared successfully",
+            session_id=session_id
+        )
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error clearing session: {str(e)}")
+        return create_error_response(f"Error clearing session: {str(e)}")
 
-# WebSocket endpoint with enhanced formatting
+# ============================================================================
+# WEBSOCKET ENDPOINT
+# ============================================================================
+
 @app.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
+    """WebSocket endpoint for real-time chat"""
     await websocket.accept()
+    logger.info(f"WebSocket connected: {session_id}")
     
     try:
         while True:
+            # Receive message
             data = await websocket.receive_text()
             message_data = json.loads(data)
             
-            # Get provider from message or use default
-            provider_override = message_data.get("provider")
-            active_provider = provider_override or chat_config.provider_manager.current_provider
+            # Create ChatRequest from WebSocket data
+            chat_request = ChatRequest(
+                message=message_data.get("message", ""),
+                session=session_id,
+                tools=ToolType(message_data["tools"]) if message_data.get("tools") else None,
+                prompt_mode=PromptMode(message_data.get("prompt_mode", "medical")),
+                language=message_data.get("language", "auto")
+            )
             
-            # Check if this is an enhanced medical search request
-            if message_data.get("enhanced_search"):
-                try:
-                    # Extract search parameters
-                    tool_name = message_data.get("tool_name")
-                    search_query = message_data.get("search_query")
-                    original_message = message_data.get("message")
-                    
-                    # Perform enhanced search
-                    search_result = await enhanced_medical_search(
-                        query=search_query,
-                        tool_name=tool_name,
-                        original_question=original_message,
-                        format_with_gpt=True
-                    )
-                    
-                    # Send formatted response
-                    response_data = {
-                        "type": "enhanced_search_result",
-                        "response": search_result["formatted_result"],
-                        "raw_data": search_result["raw_result"],
-                        "tool_used": tool_name,
-                        "search_term": search_query,
-                        "session_id": session_id,
-                        "timestamp": datetime.now().isoformat(),
-                        "provider": active_provider
-                    }
-                    
-                except Exception as search_error:
-                    response_data = {
-                        "type": "error",
-                        "response": f"Enhanced search failed: {str(search_error)}",
-                        "session_id": session_id,
-                        "timestamp": datetime.now().isoformat()
-                    }
-            else:
-                # Regular chat processing
-                chat_engine = chat_config.get_or_create_chat_engine(session_id, provider_override)
-                
-                # Process message
-                response = await asyncio.to_thread(
-                    chat_engine.chat,
-                    message_data["message"]
-                )
-                
-                # Update session info
-                session_info = await chat_config.get_session_info(session_id)
-                message_count = int(session_info.get("message_count", 0)) + 1 if session_info else 1
-                await chat_config.save_session_info(session_id, message_count, active_provider)
-                
-                # Send response
-                response_data = {
-                    "type": "chat_response",
-                    "response": str(response),
-                    "session_id": session_id,
-                    "timestamp": datetime.now().isoformat(),
-                    "message_count": message_count,
-                    "provider": active_provider
-                }
+            # Process through unified chat endpoint
+            response = await unified_chat_endpoint(chat_request)
             
-            await websocket.send_text(json.dumps(response_data))
+            # Send response back through WebSocket
+            await websocket.send_text(response.model_dump_json())
             
     except WebSocketDisconnect:
-        print(f"WebSocket disconnected for session: {session_id}")
+        logger.info(f"WebSocket disconnected: {session_id}")
     except Exception as e:
-        print(f"WebSocket error: {e}")
+        logger.error(f"WebSocket error: {e}")
         await websocket.close()
+
+# ============================================================================
+# MAIN APPLICATION ENTRY POINT
+# ============================================================================
 
 if __name__ == "__main__":
     import uvicorn
