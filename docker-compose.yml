@@ -1,0 +1,91 @@
+version: '3.8'
+
+services:
+  clinical-sandbox:
+    build:
+      context: ./CLINICAL_SANDBOX
+      dockerfile: Dockerfile
+    container_name: clinical-sandbox
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./CLINICAL_SANDBOX:/app
+      - /app/node_modules
+    networks:
+      - gomedisys-net
+    environment:
+      - VITE_ADM_API_URL=http://localhost:8000
+      - VITE_CHAT_API_URL=http://localhost:7005
+    restart: always
+
+  gateway:
+    build:
+      context: ./SERVICES/ADM_MODULAR
+      dockerfile: Dockerfile
+    container_name: gateway
+    ports:
+      - "8000:8000"
+    networks:
+      - gomedisys-net
+    restart: always
+
+  gm-general-chat:
+    build:
+      context: ./SERVICES/gm_general_chat
+      dockerfile: Dockerfile
+    container_name: gm-general-chat
+    ports:
+      - "7005:7005"
+    env_file:
+      - ./SERVICES/gm_general_chat/.env
+    environment:
+      - REDIS_URL=redis://redis-general:6379/0
+      - DEFAULT_PROVIDER=openai
+    networks:
+      - gomedisys-net
+    depends_on:
+      - redis-general
+    volumes:
+      - ./SERVICES/gm_general_chat/logs:/app/logs
+      - ./SERVICES/gm_general_chat:/app
+    restart: always
+
+  medical-auditor:
+    build:
+      context: ./SERVICES/medical_auditor
+      dockerfile: Dockerfile
+    container_name: medical-auditor
+    ports:
+      - "8001:8001"
+    env_file:
+      - ./SERVICES/gm_general_chat/.env
+    environment:
+      - REDIS_URL=redis://redis-general:6379/0
+    networks:
+      - gomedisys-net
+    restart: always
+
+  redis-general:
+    image: redis/redis-stack-server:latest
+    container_name: redis-general
+    networks:
+      - gomedisys-net
+    restart: always
+
+  gm-ch-summary:
+    build:
+      context: ./SERVICES/gm_ch_summary
+      dockerfile: Dockerfile
+    container_name: gm-ch-summary
+    ports:
+      - "7006:7006"
+    env_file:
+      - ./SERVICES/gm_general_chat/.env
+      - ./SERVICES/gm_ch_summary/.env
+    networks:
+      - gomedisys-net
+    restart: always
+
+networks:
+  gomedisys-net:
+    external: true

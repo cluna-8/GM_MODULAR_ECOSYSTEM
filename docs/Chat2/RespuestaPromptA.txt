@@ -1,0 +1,1 @@
+{"id":null,"errorStatus":false,"message":"OK","jsonData":"{\"detail\":[{\"type\":\"json_invalid\",\"loc\":[\"body\",542],\"msg\":\"JSON decode error\",\"input\":{},\"ctx\":{\"error\":\"Invalid control character at\"}}]}","code":0}

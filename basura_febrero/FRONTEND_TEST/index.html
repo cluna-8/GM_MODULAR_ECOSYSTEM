@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GOMedisys - Healthcare Chat API Tester</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect width="40" height="40" rx="12" fill="url(#gradient)"/>
+                        <path d="M20 10L20 30M10 20L30 20" stroke="white" stroke-width="3" stroke-linecap="round"/>
+                        <defs>
+                            <linearGradient id="gradient" x1="0" y1="0" x2="40" y2="40">
+                                <stop offset="0%" stop-color="#667eea"/>
+                                <stop offset="100%" stop-color="#764ba2"/>
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                    <h1>GOMedisys API Tester</h1>
+                </div>
+                <div class="status-indicator" id="apiStatus">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Checking...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <div class="sidebar-section">
+                    <h3>Configuración</h3>
+                    <div class="form-group">
+                        <label for="apiUrl">API URL</label>
+                        <input type="text" id="apiUrl" value="http://localhost:7005" placeholder="http://localhost:7005">
+                    </div>
+                    <div class="form-group">
+                        <label for="sessionId">Session ID</label>
+                        <input type="text" id="sessionId" placeholder="Auto-generado">
+                    </div>
+                    <button class="btn btn-secondary" onclick="generateSessionId()">Nueva Sesión</button>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>Modo de Prompt</h3>
+                    <select id="promptMode" class="select-input">
+                        <option value="medical">Medical</option>
+                        <option value="pediatric">Pediatric</option>
+                        <option value="emergency">Emergency</option>
+                        <option value="general">General</option>
+                        <option value="mental_health">Mental Health</option>
+                    </select>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>Herramientas Médicas</h3>
+                    <select id="toolType" class="select-input">
+                        <option value="">Sin herramienta</option>
+                        <option value="fda">FDA Drug Search</option>
+                        <option value="pubmed">PubMed Literature</option>
+                        <option value="clinical_trials">Clinical Trials</option>
+                        <option value="icd10">ICD-10 Codes</option>
+                        <option value="scraping">Web Scraping</option>
+                    </select>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>Endpoints Rápidos</h3>
+                    <div class="quick-actions">
+                        <button class="btn-quick" onclick="testHealth()">
+                            <span>🏥</span> Health Check
+                        </button>
+                        <button class="btn-quick" onclick="testProviders()">
+                            <span>🔧</span> Providers
+                        </button>
+                        <button class="btn-quick" onclick="testPrompts()">
+                            <span>📝</span> Prompts
+                        </button>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Chat Area -->
+            <div class="chat-container">
+                <div class="chat-header">
+                    <h2>Chat Interface</h2>
+                    <button class="btn btn-clear" onclick="clearChat()">Limpiar Chat</button>
+                </div>
+
+                <div class="chat-messages" id="chatMessages">
+                    <div class="welcome-message">
+                        <h3>👋 Bienvenido al API Tester de GOMedisys</h3>
+                        <p>Prueba la API de chat médico con diferentes modos y herramientas.</p>
+                        <ul>
+                            <li>Selecciona un modo de prompt (Medical, Pediatric, Emergency, etc.)</li>
+                            <li>Opcionalmente, elige una herramienta médica (FDA, PubMed, ICD-10, etc.)</li>
+                            <li>Escribe tu mensaje y envía</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="chat-input-container">
+                    <div class="input-wrapper">
+                        <textarea 
+                            id="messageInput" 
+                            placeholder="Escribe tu mensaje aquí... (Ej: ¿Qué es la aspirina?)"
+                            rows="3"
+                        ></textarea>
+                        <button class="btn btn-primary" onclick="sendMessage()" id="sendBtn">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                <path d="M2 10L18 2L10 18L8 11L2 10Z" fill="currentColor"/>
+                            </svg>
+                            Enviar
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Response Panel -->
+            <div class="response-panel">
+                <div class="panel-header">
+                    <h3>Respuesta API</h3>
+                    <button class="btn-icon" onclick="copyResponse()" title="Copiar respuesta">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                    </button>
+                </div>
+                <div class="response-content">
+                    <pre id="responseJson" class="json-display">Esperando respuesta...</pre>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
