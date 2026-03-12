@@ -39,3 +39,7 @@ class APILog(Base):
     completion_tokens = Column(Integer)
     total_tokens = Column(Integer)
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    # Campos de auditoría profesional
+    auditor_alert = Column(Boolean, default=False)   # True si el auditor marcó riesgo
+    session_id = Column(String, nullable=True)        # Para acceder a la traza completa
+    prompt_snippet = Column(Text, nullable=True)      # Primeros 200 chars del prompt

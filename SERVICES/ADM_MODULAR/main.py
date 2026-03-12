@@ -53,15 +53,25 @@ async def validate_api_key(
     return db_token
 
 
-# --- Ruta COMPATIBLE (Para que el cliente NO cambie nada) ---
+# --- Rutas COMPATIBLES (Alias amigables para el cliente) ---
 @app.post("/medical/chat")
 async def legacy_chat_proxy(
     request_data: dict,
     token: models.Token = Depends(validate_api_key),
     db: Session = Depends(get_db),
 ):
-    """Mapea la ruta vieja al Chat 1 actual de forma transparente"""
+    """Alias amigable: mapea /medical/chat -> Chat 1 (Asistente Médico General)"""
     return await modular_chat_proxy("chat1", request_data, token, db)
+
+
+@app.post("/medical/summary")
+async def summary_chat_proxy(
+    request_data: dict,
+    token: models.Token = Depends(validate_api_key),
+    db: Session = Depends(get_db),
+):
+    """Alias amigable: mapea /medical/summary -> Chat 2 (Resumen de Historia Clínica)"""
+    return await modular_chat_proxy("chat2", request_data, token, db)
 
 
 # --- Rutas de los Chats (El Proxy Modular) ---
@@ -86,9 +96,18 @@ async def modular_chat_proxy(
             data = response.json()
 
             # 3. Registro Contable (Contador de uso)
-            # Aquí interceptamos los tokens usados para el log
             usage = data.get("usage") or {}
             total_tokens = usage.get("total_tokens", 0)
+
+            # Capturar metadatos del auditor para revisión profesional
+            auditor_data = data.get("data", {})
+            auditor_alert = bool(auditor_data.get("auditor_alert", False)) or bool(auditor_data.get("auditor_intercept", False))
+            session_id = data.get("session_id", None)
+            prompt_snippet = None
+            if "promptData" in request_data:
+                prompt_snippet = str(request_data["promptData"])[:200]
+            elif "message" in request_data:
+                prompt_snippet = str(request_data["message"])[:200]
 
             new_log = models.APILog(
                 token_id=token.id,
@@ -96,6 +115,9 @@ async def modular_chat_proxy(
                 total_tokens=total_tokens,
                 prompt_tokens=usage.get("prompt_tokens", 0),
                 completion_tokens=usage.get("completion_tokens", 0),
+                auditor_alert=auditor_alert,
+                session_id=session_id,
+                prompt_snippet=prompt_snippet,
             )
             db.add(new_log)
 
@@ -168,6 +190,50 @@ async def get_logs(db: Session = Depends(get_db)):
         db.query(models.APILog).order_by(models.APILog.timestamp.desc()).limit(10).all()
     )
     return logs
+
+
+@app.get("/admin/flagged-queries")
+async def get_flagged_queries(db: Session = Depends(get_db)):
+    """Lista todas las consultas marcadas como peligrosas por el auditor.
+    El profesional puede usar el session_id para ver la traza completa
+    en GET /admin/trace/{session_id} y enviar su feedback a POST /audit/feedback."""
+    flagged = (
+        db.query(models.APILog)
+        .filter(models.APILog.auditor_alert == True)
+        .order_by(models.APILog.timestamp.desc())
+        .all()
+    )
+    return [
+        {
+            "id": log.id,
+            "timestamp": str(log.timestamp),
+            "endpoint": log.endpoint,
+            "session_id": log.session_id,
+            "prompt_snippet": log.prompt_snippet,
+            "tokens": log.total_tokens,
+            "trace_url": f"/admin/trace/{log.session_id}" if log.session_id else None,
+            "feedback_url": "/audit/feedback  [POST]",
+        }
+        for log in flagged
+    ]
+
+@app.get("/admin/usage/{token_str}")
+async def get_token_usage(token_str: str, db: Session = Depends(get_db)):
+    """Consulta el consumo total de tokens de una API Key específica"""
+    token = db.query(models.Token).filter(models.Token.token == token_str).first()
+    if not token:
+        raise HTTPException(status_code=404, detail="Token no encontrado")
+    logs = db.query(models.APILog).filter(models.APILog.token_id == token.id).all()
+    return {
+        "token": token_str,
+        "name": token.name,
+        "total_tokens_consumed": token.total_tokens_consumed,
+        "calls": len(logs),
+        "log_detail": [
+            {"endpoint": l.endpoint, "tokens": l.total_tokens, "timestamp": str(l.timestamp)}
+            for l in logs
+        ]
+    }
 
 
 @app.get("/admin/trace/{session_id}")
