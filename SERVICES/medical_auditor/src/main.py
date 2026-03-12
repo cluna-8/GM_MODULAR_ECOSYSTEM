@@ -12,7 +12,6 @@ import numpy as np
 from redis import Redis
 from redis.commands.search.field import VectorField, TextField
 from redis.commands.search.query import Query
-from sentence_transformers import SentenceTransformer
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
