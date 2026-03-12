@@ -4,9 +4,77 @@ Esta guía detalla cómo probar cada una de las funcionalidades del ecosistema m
 
 ---
 
+## 0. Flujo Completo de Usuario Nuevo (Empieza aquí)
+
+El sistema **no tiene login tradicional**. La autenticación funciona con **API Keys (Bearer Tokens)**. Sigue estos 4 pasos en orden antes de usar cualquier otro endpoint.
+
+### Paso 1 — Levantar los servicios e inicializar la base de datos
+
+```bash
+# Levantar servicios
+docker compose up -d --build
+
+# Inicializar base de datos y token maestro (hcg_maestro_123)
+docker exec gateway python seed_internal.py
+```
+
+### Paso 2 — Crear tu usuario y obtener tu token
+
+Este endpoint no requiere autenticación previa. Crea un usuario y devuelve tu API Key.
+
+```bash
+curl -X POST http://localhost:8000/admin/tokens \
+  -H "Content-Type: application/json" \
+  -d '{"username": "dr_garcia", "name": "Dr. García - Clínica Norte"}'
+```
+
+**Respuesta esperada:**
+```json
+{
+  "token": "hcg_abc123def456...",
+  "name": "Dr. García - Clínica Norte"
+}
+```
+
+> Guarda el valor de `token`. Es tu credencial para todos los demás endpoints.
+
+### Paso 3 — Hacer tu primera consulta
+
+```bash
+curl -X POST http://localhost:8000/medical/chat \
+  -H "Authorization: Bearer hcg_abc123def456..." \
+  -H "Content-Type: application/json" \
+  -d '{"promptData": "¿Qué es la diabetes tipo 2?", "IAType": "medical"}'
+```
+
+La respuesta incluye un `session_id` generado automáticamente. Guárdalo para continuar la conversación.
+
+### Paso 4 — Continuar la conversación (con memoria)
+
+Usa el `session_id` recibido en el paso anterior para mantener el contexto:
+
+```bash
+curl -X POST http://localhost:8000/medical/chat \
+  -H "Authorization: Bearer hcg_abc123def456..." \
+  -H "Content-Type: application/json" \
+  -d '{"promptData": "¿Y cuál es el tratamiento?", "IAType": "medical", "session": "EL_SESSION_ID_DEL_PASO_3"}'
+```
+
+### Resumen del flujo
+
+```
+POST /admin/tokens            →  obtienes tu token (hcg_...)
+         ↓
+POST /medical/chat            →  Bearer token + pregunta → respuesta + session_id
+         ↓
+POST /medical/chat            →  mismo session_id → el bot recuerda el contexto (7 días)
+```
+
+---
+
 ## 1. Configuración Inicial y Despliegue
 
-Antes de probar, asegúrate de que todos los servicios estén arriba y el token maestro inicializado.
+Si los servicios ya están corriendo, puedes saltarte esta sección.
 
 ```bash
 # Levantar servicios

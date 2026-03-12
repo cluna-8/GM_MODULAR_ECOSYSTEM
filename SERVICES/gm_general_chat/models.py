@@ -52,7 +52,7 @@ class ChatRequest(BaseModel):
         validation_alias="promptData",
     )
     session: Optional[str] = Field(
-        None, description="ID de sesión único", validation_alias="sessionId"
+        None, description="ID de sesión único"
     )
     token: Optional[str] = Field(
         None, description="Token de usuario (para API Gateway)"
