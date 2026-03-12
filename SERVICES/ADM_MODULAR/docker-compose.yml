@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  gateway:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    environment:
+      - DATABASE_URL=sqlite:///./modular_gateway.db
+      - SECRET_KEY=clave_maestra_demo_123
+    networks:
+      - gomedisys-net
+    restart: always
+
+networks:
+  gomedisys-net:
+    external: true
