@@ -11,3 +11,9 @@ __pycache__/
 node_modules/
 dist/
 build/
+
+# Application specific exclusions
+**/modular_gateway.db
+**/logs/*.jsonl
+**/logs/*.log
+*.db
