@@ -1,23 +1,6 @@
 version: '3.8'
 
 services:
-  clinical-sandbox:
-    build:
-      context: ./CLINICAL_SANDBOX
-      dockerfile: Dockerfile
-    container_name: clinical-sandbox
-    ports:
-      - "5173:5173"
-    volumes:
-      - ./CLINICAL_SANDBOX:/app
-      - /app/node_modules
-    networks:
-      - gomedisys-net
-    environment:
-      - VITE_ADM_API_URL=http://localhost:8000
-      - VITE_CHAT_API_URL=http://localhost:7005
-    restart: always
-
   gateway:
     build:
       context: ./SERVICES/ADM_MODULAR
