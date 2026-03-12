@@ -1,3 +1,13 @@
-FRONT/
-**/.env
-.env
+# Exclude development / sandbox / documentation / temporary folders
+CLINICAL_SANDBOX/
+FEEDBACK/
+docs/
+basura_febrero/
+*.env
+.vscode/
+__pycache__/
+*.pyc
+.DS_Store
+node_modules/
+dist/
+build/
