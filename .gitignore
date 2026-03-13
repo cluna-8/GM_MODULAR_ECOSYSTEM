@@ -13,6 +13,9 @@ dist/
 build/
 
 # AI agent context and local planning (local only)
+**/*.md
+!/README.md
+!/guide.md
 CLAUDE.md
 
 # Test files (local only)
