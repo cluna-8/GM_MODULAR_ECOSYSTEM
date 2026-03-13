@@ -16,6 +16,10 @@ build/
 AI_CONTEXT.md
 CLAUDE.md
 
+# Test files (local only)
+test_*.sh
+**/test_*.py
+
 # Application specific exclusions
 **/modular_gateway.db
 **/logs/*.jsonl
