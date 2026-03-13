@@ -12,6 +12,10 @@ node_modules/
 dist/
 build/
 
+# AI agent context (local only)
+AI_CONTEXT.md
+CLAUDE.md
+
 # Application specific exclusions
 **/modular_gateway.db
 **/logs/*.jsonl
