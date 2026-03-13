@@ -54,6 +54,15 @@ async def validate_api_key(
 
 
 # --- Rutas COMPATIBLES (Alias amigables para el cliente) ---
+def _validate_chat_payload(request_data: dict):
+    """Valida que el body tenga al menos un campo de mensaje antes de proxear."""
+    if not request_data.get("promptData") and not request_data.get("message"):
+        raise HTTPException(
+            status_code=422,
+            detail=[{"loc": ["body", "promptData"], "msg": "Field required", "type": "missing"}],
+        )
+
+
 @app.post("/medical/chat")
 async def legacy_chat_proxy(
     request_data: dict,
@@ -61,6 +70,7 @@ async def legacy_chat_proxy(
     db: Session = Depends(get_db),
 ):
     """Alias amigable: mapea /medical/chat -> Chat 1 (Asistente Médico General)"""
+    _validate_chat_payload(request_data)
     return await modular_chat_proxy("chat1", request_data, token, db)
 
 
@@ -71,6 +81,7 @@ async def summary_chat_proxy(
     db: Session = Depends(get_db),
 ):
     """Alias amigable: mapea /medical/summary -> Chat 2 (Resumen de Historia Clínica)"""
+    _validate_chat_payload(request_data)
     return await modular_chat_proxy("chat2", request_data, token, db)
 
 
@@ -246,3 +257,18 @@ async def get_audit_trace(session_id: str):
             return response.json()
         except Exception:
             return {"error": "Trace not available"}
+
+
+@app.post("/audit/feedback")
+async def submit_feedback(
+    request_data: dict,
+    _token: models.Token = Depends(validate_api_key),
+):
+    """Proxy para enviar feedback de experto médico al módulo de chat (RLHF)"""
+    target_url = f"{CHAT_MODULES['chat1']}/audit/feedback"
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(target_url, json=request_data, timeout=10.0)
+            return response.json()
+        except Exception:
+            raise HTTPException(status_code=502, detail="Error enviando feedback al módulo de chat")

@@ -210,8 +210,9 @@ else
   fail "5.2 Traza de sesión: error ($TRACE_ERR)"
 fi
 
-# 5.3 Feedback de experto (endpoint directo en chat service — el gateway no lo expone aún)
-FEEDBACK=$(curl -s -X POST "http://localhost:7005/audit/feedback" \
+# 5.3 Feedback de experto (ahora disponible en gateway vía POST /audit/feedback)
+FEEDBACK=$(curl -s -X POST "$BASE_URL/audit/feedback" \
+  -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d "{
     \"session_id\": \"$SESSION_ID\",
@@ -221,7 +222,7 @@ FEEDBACK=$(curl -s -X POST "http://localhost:7005/audit/feedback" \
     \"expert_id\": \"qa_tester\"
   }")
 FEEDBACK_STATUS=$(echo "$FEEDBACK" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null)
-[ "$FEEDBACK_STATUS" = "success" ] && pass "5.3 Feedback de experto: registrado correctamente" || warn "5.3 Feedback de experto (gateway no expone /audit/feedback — llamada directa a :7005)"
+[ "$FEEDBACK_STATUS" = "success" ] && pass "5.3 Feedback de experto: registrado correctamente vía gateway" || fail "5.3 Feedback de experto (status=$FEEDBACK_STATUS)"
 
 # ══════════════════════════════════════════════════════════
 # FASE 6 — CARGA Y CASOS LÍMITE
