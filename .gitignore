@@ -13,9 +13,7 @@ dist/
 build/
 
 # AI agent context and local planning (local only)
-AI_CONTEXT.md
 CLAUDE.md
-TASKS.md
 
 # Test files (local only)
 test_*.sh
