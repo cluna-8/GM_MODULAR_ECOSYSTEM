@@ -14,7 +14,7 @@
               "type": "markdown",
               "state": {
                 "file": "Index.md",
-                "mode": "preview",
+                "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
@@ -184,5 +184,9 @@
     }
   },
   "active": "97520a2ef1e35cad",
-  "lastOpenFiles": []
+  "lastOpenFiles": [
+    "Clinical_Summary.md",
+    "Sin título.canvas",
+    "Index.md"
+  ]
 }

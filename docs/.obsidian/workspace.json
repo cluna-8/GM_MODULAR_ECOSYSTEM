@@ -11,10 +11,14 @@
             "id": "1dc6a62268dc7baa",
             "type": "leaf",
             "state": {
-              "type": "graph",
-              "state": {},
-              "icon": "lucide-git-fork",
-              "title": "Vista gráfica"
+              "type": "markdown",
+              "state": {
+                "file": "SYSTEM_WALKTHROUGH.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "SYSTEM_WALKTHROUGH"
             }
           }
         ]
@@ -181,6 +185,18 @@
   },
   "active": "1dc6a62268dc7baa",
   "lastOpenFiles": [
+    "Go Medisys/Voice_Module.md",
+    "Go Medisys/Sin título.canvas",
+    "Go Medisys/Medical_Auditor.md",
+    "Go Medisys/Infrastructure_Server.md",
+    "Go Medisys/Index.md",
+    "Go Medisys/General_Chat.md",
+    "Go Medisys/Diagnosis_Module.md",
+    "Go Medisys/Clinical_Summary.md",
+    "Go Medisys/CLAUDE.md",
+    "Go Medisys/ADM_Gateway.md",
+    "Go Medisys",
+    "obsidian/Sin título.canvas",
     "tasks.md",
     "ai_context.md",
     "TASKS.md",
