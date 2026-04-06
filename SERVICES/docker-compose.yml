@@ -1,0 +1,133 @@
+version: '3.8'
+
+# ============================================================
+# GoMedisys — Docker Compose Maestro
+# Levanta todos los servicios clínicos en gomedisys-net
+#
+# Uso:
+#   docker compose up -d --build
+#   docker compose down
+# ============================================================
+
+services:
+
+  # ── Redis único (db=0 chat/auditor, db=1 voice) ──────────
+  # Datos de sesiones y pruebas persisten en redis_data volume.
+  # Para parar SIN borrar datos: docker compose stop redis-general
+  # Para borrar todo: docker compose down -v
+  redis-general:
+    image: redis:7-alpine
+    container_name: redis-general
+    command: redis-server --maxmemory 384mb --maxmemory-policy allkeys-lru --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - gomedisys-net
+    restart: unless-stopped
+
+  # ── ADM Gateway (puerto 8000) ─────────────────────────────
+  healthcare-api-gateway:
+    build:
+      context: ../../Blossom/CHAT/ADM/api-gateway
+      dockerfile: Dockerfile
+    container_name: healthcare-api-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite:///./data/healthcare_gateway.db
+      - MEDICAL_API_URL=http://healthcare-chat-api:7005
+      - SUMMARY_API_URL=http://gm-ch-summary:7006
+      - VOICE_API_URL=http://gm-voice:7003
+      - JWT_SECRET_KEY=gomedisys_dev_secret_2026
+    volumes:
+      - ../../Blossom/CHAT/ADM/api-gateway:/app
+      - gateway_data:/app/data
+    depends_on:
+      redis-general:
+        condition: service_healthy
+    networks:
+      - gomedisys-net
+    restart: unless-stopped
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  # ── General Chat — chat1 (puerto 7005) ────────────────────
+  healthcare-chat-api:
+    build:
+      context: ../gm_general_chat
+      dockerfile: Dockerfile
+    container_name: healthcare-chat-api
+    ports:
+      - "7005:7005"
+    env_file:
+      - ../gm_general_chat/.env
+    environment:
+      - REDIS_URL=redis://redis-general:6379/0
+      - DEFAULT_PROVIDER=openai
+    depends_on:
+      redis-general:
+        condition: service_healthy
+    networks:
+      - gomedisys-net
+    restart: unless-stopped
+
+  # ── Clinical Summary — chat2 (puerto 7006) ────────────────
+  gm-ch-summary:
+    build:
+      context: ./gm_ch_summary
+      dockerfile: Dockerfile
+    container_name: gm-ch-summary
+    ports:
+      - "7006:7006"
+    env_file:
+      - ./gm_ch_summary/.env
+    environment:
+      - PORT=7006
+      - OPENAI_MODEL=gpt-4o-mini
+    networks:
+      - gomedisys-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7006/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── Voice Module — chat3 (puerto 7003) ────────────────────
+  gm-voice:
+    build:
+      context: ./gm_voice
+      dockerfile: Dockerfile
+    container_name: gm-voice
+    ports:
+      - "7003:7003"
+    env_file:
+      - ./gm_voice/.env
+    environment:
+      - PORT=7003
+      - REDIS_URL=redis://redis-general:6379/1
+    depends_on:
+      redis-general:
+        condition: service_healthy
+    networks:
+      - gomedisys-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7003/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  gateway_data:   # SQLite ADM — tokens, logs, usuarios
+    driver: local
+  redis_data:     # Redis AOF — sesiones de chat y voice
+    driver: local
+
+networks:
+  gomedisys-net:
+    external: true

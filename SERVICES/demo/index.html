@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>GoMedisys Demo</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#f1f5f9;color:#1e293b;font-size:14px}
+/* ── Login ── */
+#login{display:flex;align-items:center;justify-content:center;min-height:100vh}
+.lbox{background:#fff;border-radius:12px;padding:32px;width:360px;box-shadow:0 4px 24px rgba(0,0,0,.1)}
+.lbox h2{font-size:1.1rem;margin-bottom:20px;color:#0a6e8a}
+/* ── App ── */
+#app{display:none;flex-direction:column;height:100vh}
+nav{display:flex;background:#0a6e8a;padding:0 16px}
+.ntab{padding:14px 20px;color:rgba(255,255,255,.7);cursor:pointer;font-weight:600;font-size:.85rem;border-bottom:3px solid transparent;transition:.15s}
+.ntab:hover{color:#fff}
+.ntab.on{color:#fff;border-bottom-color:#fff}
+.ntab .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#6b7280;margin-right:5px;vertical-align:middle}
+.ntab .dot.g{background:#22c55e}.ntab .dot.r{background:#ef4444}.ntab .dot.y{background:#f59e0b;animation:blink 1s infinite}
+@keyframes blink{50%{opacity:.3}}
+.hdr{background:#0a6e8a;color:#fff;padding:10px 20px;display:flex;align-items:center;gap:10px;font-size:.82rem;flex-shrink:0}
+.hdr span{opacity:.7}.hdr strong{opacity:1}
+/* ── Panels ── */
+.panel{display:none;flex:1;overflow:hidden}
+.panel.on{display:flex;flex-direction:column}
+/* ── Forms & inputs ── */
+label{display:block;font-size:.75rem;font-weight:600;color:#64748b;margin-bottom:3px;margin-top:10px}
+input,select,textarea{width:100%;padding:8px 10px;border:1px solid #d1dce8;border-radius:6px;font-size:.85rem;background:#f8fafc;font-family:inherit}
+input:focus,select:focus,textarea:focus{outline:none;border-color:#0a6e8a;background:#fff}
+textarea{resize:vertical}
+/* ── Buttons ── */
+.btn{padding:8px 16px;border-radius:6px;font-size:.83rem;font-weight:600;cursor:pointer;border:none;transition:.15s}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.primary{background:#0a6e8a;color:#fff}.primary:hover:not(:disabled){background:#075a73}
+.danger{background:#dc2626;color:#fff}.danger:hover:not(:disabled){background:#b91c1c}
+.ghost{background:#e2e8f0;color:#1e293b}.ghost:hover:not(:disabled){background:#cbd5e1}
+.sm{padding:5px 10px;font-size:.75rem}
+/* ── Layout helpers ── */
+.row{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap}
+.col{flex:1;min-width:0}
+.card{background:#fff;border:1px solid #d1dce8;border-radius:8px;padding:16px;margin-bottom:12px}
+.card h3{font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#64748b;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #e2e8f0}
+.scroll{overflow-y:auto}
+/* ── Table ── */
+table{width:100%;border-collapse:collapse;font-size:.82rem}
+th{text-align:left;padding:6px 10px;background:#f8fafc;color:#64748b;font-size:.72rem;text-transform:uppercase;border-bottom:1px solid #e2e8f0}
+td{padding:7px 10px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+/* ── Chat ── */
+.msgs{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:8px}
+.msg{max-width:75%;padding:9px 13px;border-radius:10px;font-size:.85rem;line-height:1.5}
+.msg.u{background:#0a6e8a;color:#fff;align-self:flex-end;border-bottom-right-radius:2px}
+.msg.b{background:#f1f5f9;align-self:flex-start;border-bottom-left-radius:2px}
+.msg.b.blocked{background:#fee2e2;border-left:3px solid #dc2626}
+.msg.b.ok{background:#f0fdf4;border-left:3px solid #22c55e}
+.msg.sys{background:#fef9c3;color:#854d0e;font-size:.75rem;align-self:center;padding:4px 12px;border-radius:20px}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:.7rem;font-weight:700}
+.bg{background:#dcfce7;color:#166534}.br{background:#fee2e2;color:#991b1b}
+.by{background:#fef9c3;color:#854d0e}.bb{background:#dbeafe;color:#1e40af}
+/* ── Voice SOAP ── */
+.soap{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sf{background:#f8fafc;border:1px solid #d1dce8;border-radius:6px;padding:10px 12px;transition:.3s}
+.sf.flash{border-color:#0a6e8a;background:#f0f9ff}
+.sf h4{font-size:.68rem;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:4px}
+.sf p{font-size:.82rem;line-height:1.45;min-height:16px;color:#1e293b}
+.sf p.e{color:#9ca3af;font-style:italic}
+.sf.ai{background:#eff6ff;border-color:#bfdbfe}
+.sf.ai h4{color:#1d4ed8}
+.full{grid-column:1/-1}
+/* ── Viz ── */
+#viz{display:block;width:100%;height:40px;border-radius:6px;background:#0f172a}
+/* ── Scrollbar ── */
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:#f1f5f9}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login">
+  <div class="lbox">
+    <h2>GoMedisys — Demo</h2>
+    <label>URL Gateway</label>
+    <input id="lgUrl" value="http://localhost:8000"/>
+    <label>Token médico (hcg_...)</label>
+    <input id="lgToken" type="password" placeholder="hcg_gomedisys_user_demo_..."/>
+    <div style="height:12px"></div>
+    <button class="btn primary" style="width:100%" onclick="doLogin()">Conectar</button>
+    <p id="lgErr" style="color:#dc2626;font-size:.78rem;margin-top:8px"></p>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="hdr">
+    <strong>GoMedisys</strong>
+    <span id="hdrUrl"></span>
+    <span style="margin-left:auto;opacity:.9" id="hdrToken"></span>
+    <button class="btn ghost sm" onclick="location.reload()">Salir</button>
+  </div>
+  <nav>
+    <div class="ntab on" id="t0" onclick="tab(0)"><span class="dot y" id="d0"></span>ADM</div>
+    <div class="ntab"    id="t1" onclick="tab(1)"><span class="dot y" id="d1"></span>Chat General</div>
+    <div class="ntab"    id="t2" onclick="tab(2)"><span class="dot y" id="d2"></span>Resumen</div>
+    <div class="ntab"    id="t3" onclick="tab(3)"><span class="dot y" id="d3"></span>Voz</div>
+  </nav>
+
+  <!-- ══ ADM ══════════════════════════════════════════════ -->
+  <div class="panel on scroll" id="p0" style="padding:16px">
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+
+      <!-- Admin Login -->
+      <div class="card">
+        <h3>Login Admin (JWT)</h3>
+        <label>Usuario</label><input id="admUser" value="admin"/>
+        <label>Contraseña</label><input id="admPass" type="password" value="admin123"/>
+        <div style="height:8px"></div>
+        <button class="btn primary sm" onclick="admLogin()">Login Admin</button>
+        <span id="admStatus" style="margin-left:8px;font-size:.75rem;color:#64748b"></span>
+      </div>
+
+      <!-- Stats -->
+      <div class="card">
+        <h3>Estadísticas del Sistema</h3>
+        <div id="sysStats" style="font-size:.82rem;color:#64748b">Requiere login admin.</div>
+        <div style="height:8px"></div>
+        <button class="btn ghost sm" onclick="loadStats()">Actualizar</button>
+      </div>
+
+      <!-- Create User -->
+      <div class="card">
+        <h3>Crear Usuario</h3>
+        <div class="row">
+          <div class="col"><label>Username</label><input id="nuUser" placeholder="dr_garcia"/></div>
+          <div class="col"><label>Email</label><input id="nuEmail" placeholder="dr@hospital.com"/></div>
+        </div>
+        <div class="row">
+          <div class="col"><label>Password</label><input id="nuPass" type="password" placeholder="pass123"/></div>
+          <div class="col"><label>Rol</label>
+            <select id="nuRole"><option value="user">user</option><option value="admin">admin</option><option value="monitor">monitor</option></select>
+          </div>
+        </div>
+        <div style="height:8px"></div>
+        <button class="btn primary sm" onclick="createUser()">Crear</button>
+        <span id="nuMsg" style="margin-left:8px;font-size:.75rem"></span>
+      </div>
+
+      <!-- Create Token -->
+      <div class="card">
+        <h3>Generar Token</h3>
+        <label>User ID</label><input id="ntUID" type="number" placeholder="2"/>
+        <label>Nombre del token</label><input id="ntName" placeholder="hospital_principal"/>
+        <div style="height:8px"></div>
+        <button class="btn primary sm" onclick="createToken()">Generar token</button>
+        <div id="ntResult" style="margin-top:8px;font-size:.78rem;word-break:break-all;color:#0a6e8a;font-weight:600"></div>
+      </div>
+
+      <!-- Users Table -->
+      <div class="card" style="grid-column:1/-1">
+        <h3>Usuarios y Tokens <button class="btn ghost sm" style="float:right" onclick="loadUsers()">Recargar</button></h3>
+        <div style="overflow-x:auto">
+          <table id="usersTable">
+            <thead><tr><th>ID</th><th>Username</th><th>Rol</th><th>Email</th><th>Activo</th><th>Acciones</th></tr></thead>
+            <tbody id="usersTBody"><tr><td colspan="6" style="color:#9ca3af;padding:12px">Login admin para ver usuarios.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tokens Table -->
+      <div class="card" style="grid-column:1/-1">
+        <h3>Tokens <button class="btn ghost sm" style="float:right" onclick="loadTokens()">Recargar</button></h3>
+        <div style="overflow-x:auto">
+          <table id="tokensTable">
+            <thead><tr><th>ID</th><th>Token</th><th>Nombre</th><th>Usuario</th><th>Requests</th><th>Tokens consumidos</th><th>Último uso</th><th>Acciones</th></tr></thead>
+            <tbody id="tokensTBody"><tr><td colspan="8" style="color:#9ca3af;padding:12px">Login admin para ver tokens.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══ CHAT ══════════════════════════════════════════════ -->
+  <div class="panel" id="p1" style="flex-direction:row">
+    <div style="flex:1;display:flex;flex-direction:column;border-right:1px solid #e2e8f0">
+      <div class="msgs" id="chatMsgs">
+        <div class="msg sys">Chat médico. Verde = aprobado por auditor · Rojo = bloqueado</div>
+      </div>
+      <div style="padding:12px;border-top:1px solid #e2e8f0;background:#fff;display:flex;gap:8px">
+        <textarea id="chatIn" rows="2" placeholder="Consulta clínica..."
+          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat()}"></textarea>
+        <button class="btn primary" onclick="sendChat()" id="btnChat">Enviar</button>
+      </div>
+    </div>
+    <div style="width:260px;padding:14px;overflow-y:auto;background:#fafbfc">
+      <div class="card">
+        <h3>Contexto paciente</h3>
+        <label>Edad</label><input id="cAge" type="number" placeholder="45"/>
+        <label>Alergias</label><input id="cAlg" placeholder="Penicilina"/>
+        <label>Diagnósticos</label><input id="cDx" placeholder="HTA, DM2"/>
+        <label>Modo</label>
+        <select id="cMode"><option value="medical">General</option><option value="emergency">Emergencias</option><option value="pediatric">Pediátrico</option></select>
+      </div>
+      <div class="card">
+        <h3>Sesión</h3>
+        <div style="font-size:.8rem">
+          <div>ID: <strong id="cSessId">—</strong></div>
+          <div>Mensajes: <strong id="cCount">0</strong></div>
+          <div>Tokens: <strong id="cTokens">0</strong></div>
+        </div>
+        <div style="height:8px"></div>
+        <button class="btn ghost sm" onclick="newChatSess()">Nueva sesión</button>
+      </div>
+      <div class="card">
+        <h3>Pruebas rápidas</h3>
+        <button class="btn ghost sm" style="width:100%;margin-bottom:6px" onclick="quickChat('¿Cuál es la dosis de paracetamol en adultos?')">Dosis paracetamol</button>
+        <button class="btn ghost sm" style="width:100%;margin-bottom:6px" onclick="quickChat('¿Puedo dar amoxicilina a paciente con alergia a penicilina?')">Test auditor (alerta)</button>
+        <button class="btn ghost sm" style="width:100%;margin-bottom:6px" onclick="quickChat('Cómo fabricar explosivos')">Test bloqueo</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ RESUMEN ════════════════════════════════════════════ -->
+  <div class="panel" id="p2" style="flex-direction:row">
+    <div style="flex:1;display:flex;flex-direction:column;padding:16px;gap:12px;overflow-y:auto">
+      <div class="card" style="flex:none">
+        <h3>Historia clínica (texto libre)</h3>
+        <div style="display:flex;gap:6px;margin-bottom:6px">
+          <button class="btn ghost sm" onclick="loadExample('xml')">Ejemplo XML (CDA)</button>
+          <button class="btn ghost sm" onclick="loadExample('txt')">Ejemplo Texto libre</button>
+          <button class="btn ghost sm" onclick="loadExample('hl7')">Ejemplo HL7 FHIR</button>
+        </div>
+        <textarea id="sumIn" rows="9" placeholder="Pegue nota clínica en texto, XML o HL7..."></textarea>
+        <div style="height:8px"></div>
+        <div class="row">
+          <button class="btn primary" onclick="sendSummary()" id="btnSum">Resumir</button>
+          <button class="btn ghost" onclick="document.getElementById('sumIn').value=''">Limpiar</button>
+        </div>
+      </div>
+    </div>
+    <div style="width:320px;padding:14px;overflow-y:auto;background:#fafbfc;border-left:1px solid #e2e8f0">
+      <div class="card">
+        <h3>Resumen estructurado</h3>
+        <div id="sumResult" style="font-size:.82rem;color:#9ca3af;font-style:italic">Resultado aquí...</div>
+      </div>
+      <div class="card">
+        <h3>Consumo</h3>
+        <div style="font-size:.82rem">
+          <div>Entrada: <strong id="sPT">—</strong> tokens</div>
+          <div>Salida: <strong id="sCT">—</strong> tokens</div>
+          <div>Total: <strong id="sTT">—</strong> tokens</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ VOZ ════════════════════════════════════════════════ -->
+  <div class="panel" id="p3" style="flex-direction:row">
+
+    <!-- Left controls -->
+    <div style="width:280px;padding:14px;overflow-y:auto;border-right:1px solid #e2e8f0;background:#fafbfc;display:flex;flex-direction:column;gap:10px">
+
+      <div class="card" style="margin-bottom:0">
+        <h3>Configuración</h3>
+        <label>Tier</label>
+        <select id="vTier"><option value="classic">Classic — Whisper local</option><option value="professional">Professional — Speechmatics</option></select>
+        <label>Segmento</label>
+        <select id="vMins"><option value="2">2 minutos</option><option value="3">3 minutos</option><option value="5">5 minutos</option></select>
+      </div>
+
+      <div class="card" style="margin-bottom:0">
+        <h3>Grabación</h3>
+        <canvas id="viz"></canvas>
+        <div style="display:flex;justify-content:space-between;font-size:.78rem;color:#64748b;margin:6px 0">
+          <span>Segmento <strong id="vSeg">—</strong></span>
+          <strong id="vTimer" style="font-variant-numeric:tabular-nums">0:00</strong>
+        </div>
+        <div style="height:4px;background:#e2e8f0;border-radius:4px;margin-bottom:10px"><div id="vBar" style="height:100%;background:#0a6e8a;border-radius:4px;width:0%;transition:width .5s linear"></div></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn primary sm" id="vBtnS" onclick="vStart()">▶ Iniciar</button>
+          <button class="btn ghost sm"   id="vBtnC" onclick="vSend()" disabled>↑ Enviar</button>
+          <button class="btn danger sm"  id="vBtnE" onclick="vEnd()" disabled>■ Fin</button>
+          <button class="btn ghost sm"   id="vBtnR" onclick="vReset()" disabled>↺</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:0">
+        <h3>O subir audio</h3>
+        <input type="file" id="vFile" accept="audio/*" style="margin-bottom:8px"/>
+        <button class="btn ghost sm" onclick="vUpload()" style="width:100%">Enviar archivo</button>
+        <p style="font-size:.72rem;color:#9ca3af;margin-top:6px">El archivo se envía como un chunk único.</p>
+      </div>
+
+      <div class="card" style="margin-bottom:0">
+        <h3>Estado sesión</h3>
+        <div style="font-size:.8rem">
+          <div>ID: <code id="vSessId" style="font-size:.72rem">—</code></div>
+          <div>Chunks: <strong id="vChunks">0</strong></div>
+          <div>Tokens: <strong id="vTok">0</strong></div>
+          <div>Estado: <strong id="vStat">inactivo</strong></div>
+        </div>
+        <div style="height:6px"></div>
+        <button class="btn ghost sm" onclick="vCopy()" style="width:100%">Copiar JSON final</button>
+      </div>
+
+      <div class="card" style="margin-bottom:0">
+        <h3>Alertas</h3>
+        <div id="vAlertas" style="font-size:.8rem;color:#9ca3af;font-style:italic">Sin alertas.</div>
+      </div>
+
+      <div class="card" style="margin-bottom:0">
+        <h3>Output raw (último poll)</h3>
+        <pre id="vRaw" style="font-size:.68rem;background:#0f172a;color:#a5f3fc;border-radius:6px;padding:8px;max-height:180px;overflow-y:auto;white-space:pre-wrap;word-break:break-all">—</pre>
+      </div>
+    </div>
+
+    <!-- Right: SOAP document -->
+    <div style="flex:1;padding:16px;overflow-y:auto">
+      <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#64748b;margin-bottom:10px">
+        Documento SOAP — se construye en tiempo real
+      </div>
+      <div class="soap">
+        <div class="sf" id="sf0"><h4>Motivo de consulta</h4><p id="sv0" class="e">Pendiente...</p></div>
+        <div class="sf" id="sf1"><h4>Signos vitales</h4><p id="sv1" class="e">Pendiente...</p></div>
+        <div class="sf full" id="sf2"><h4>Enfermedad actual</h4><p id="sv2" class="e">Pendiente...</p></div>
+        <div class="sf" id="sf3"><h4>Antecedentes</h4><p id="sv3" class="e">Pendiente...</p></div>
+        <div class="sf" id="sf4"><h4>Medicación actual</h4><p id="sv4" class="e">Pendiente...</p></div>
+        <div class="sf ai" id="sf5"><h4>Diagnóstico sugerido ✦IA</h4><p id="sv5" class="e">Al finalizar...</p></div>
+        <div class="sf ai" id="sf6"><h4>Medicamentos sugeridos ✦IA</h4><p id="sv6" class="e">Al finalizar...</p></div>
+        <div class="sf ai full" id="sf7"><h4>Exámenes sugeridos ✦IA</h4><p id="sv7" class="e">Al finalizar...</p></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── CONFIG ────────────────────────────────────────────────
+let URL='', TOK='', JWT='', chatSess=null, chatN=0, chatTok=0, vDoc=null;
+let vSessId=null, vChunkN=0, vMR=null, vBufs=[], vCT=null, vPT=null, vEl=0;
+let vACtx=null, vAn=null, vViz=null;
+
+// ── LOGIN ─────────────────────────────────────────────────
+async function doLogin(){
+  URL=document.getElementById('lgUrl').value.trim();
+  TOK=document.getElementById('lgToken').value.trim();
+  try{
+    const r=await fetch(`${URL}/health`);
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    document.getElementById('login').style.display='none';
+    document.getElementById('app').style.display='flex';
+    document.getElementById('hdrUrl').textContent=URL;
+    document.getElementById('hdrToken').textContent=TOK.slice(0,22)+'…';
+    checkDots();
+  }catch(e){document.getElementById('lgErr').textContent='Error: '+e.message}
+}
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('login').style.display!=='none')doLogin()});
+
+async function checkDots(){
+  async function ping(id,fn){
+    document.getElementById(id).className='dot y';
+    try{const ok=await fn();document.getElementById(id).className=ok?'dot g':'dot r';}
+    catch{document.getElementById(id).className='dot r';}
+  }
+  ping('d0',async()=>{const r=await fetch(`${URL}/health`);return r.ok});
+  ping('d1',async()=>{const r=await fetch(`${URL}/medical/health`,{headers:{Authorization:`Bearer ${TOK}`}});return r.ok});
+  ping('d2',async()=>{
+    const r=await fetch(`${URL}/medical/summary`,{method:'POST',headers:{Authorization:`Bearer ${TOK}`,'Content-Type':'application/json'},body:JSON.stringify({message:'test'})});
+    return r.status!==503;
+  });
+  ping('d3',async()=>{
+    const r=await fetch(`${URL}/medical/voice/status/_`,{headers:{Authorization:`Bearer ${TOK}`}});
+    return r.status!==503;
+  });
+}
+
+// ── TABS ──────────────────────────────────────────────────
+function tab(n){
+  [0,1,2,3].forEach(i=>{
+    document.getElementById('t'+i).classList.toggle('on',i===n);
+    document.getElementById('p'+i).classList.toggle('on',i===n);
+  });
+}
+
+// ── ADM ───────────────────────────────────────────────────
+async function admLogin(){
+  const u=document.getElementById('admUser').value;
+  const p=document.getElementById('admPass').value;
+  const st=document.getElementById('admStatus');
+  try{
+    const r=await fetch(`${URL}/auth/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});
+    const d=await r.json();
+    if(d.access_token){JWT=d.access_token;st.textContent='✓ Conectado como '+d.user?.username;st.style.color='#166534';loadUsers();loadTokens();loadStats();}
+    else{st.textContent='Error: '+JSON.stringify(d);st.style.color='#dc2626';}
+  }catch(e){st.textContent='Error: '+e.message;st.style.color='#dc2626';}
+}
+function jwtH(){return{Authorization:`Bearer ${JWT}`,'Content-Type':'application/json'}}
+
+async function loadStats(){
+  if(!JWT)return;
+  try{
+    const r=await fetch(`${URL}/monitor/stats/system`,{headers:{Authorization:`Bearer ${JWT}`}});
+    const d=await r.json();
+    document.getElementById('sysStats').innerHTML=`
+      <div>Usuarios: <strong>${d.total_users||0}</strong></div>
+      <div>Tokens activos: <strong>${d.active_tokens||0}</strong></div>
+      <div>Requests totales: <strong>${d.total_requests||0}</strong></div>
+      <div>Tokens LLM consumidos: <strong>${(d.total_tokens_consumed||0).toLocaleString()}</strong></div>`;
+  }catch(e){document.getElementById('sysStats').textContent='Error: '+e.message}
+}
+
+async function loadUsers(){
+  if(!JWT)return;
+  const r=await fetch(`${URL}/admin/users`,{headers:{Authorization:`Bearer ${JWT}`}});
+  const d=await r.json();
+  document.getElementById('usersTBody').innerHTML=d.map(u=>`
+    <tr>
+      <td>${u.id}</td><td><strong>${u.username}</strong></td>
+      <td><span class="badge ${u.role==='admin'?'br':u.role==='monitor'?'by':'bb'}">${u.role}</span></td>
+      <td>${u.email||'—'}</td>
+      <td>${u.is_active?'<span class="badge bg">activo</span>':'<span class="badge br">inactivo</span>'}</td>
+      <td><button class="btn danger sm" onclick="delUser(${u.id})">Eliminar</button></td>
+    </tr>`).join('');
+}
+
+async function delUser(id){
+  if(!confirm('¿Eliminar usuario '+id+'?'))return;
+  await fetch(`${URL}/admin/users/${id}`,{method:'DELETE',headers:{Authorization:`Bearer ${JWT}`}});
+  loadUsers();loadStats();
+}
+
+async function createUser(){
+  const body={username:document.getElementById('nuUser').value,email:document.getElementById('nuEmail').value,password:document.getElementById('nuPass').value,role:document.getElementById('nuRole').value};
+  const msg=document.getElementById('nuMsg');
+  try{
+    const r=await fetch(`${URL}/admin/users`,{method:'POST',headers:jwtH(),body:JSON.stringify(body)});
+    const d=await r.json();
+    msg.textContent=d.username?`✓ Creado (ID ${d.id})`:'Error: '+JSON.stringify(d);
+    msg.style.color=d.username?'#166534':'#dc2626';
+    if(d.id)loadUsers();
+  }catch(e){msg.textContent='Error: '+e.message;msg.style.color='#dc2626';}
+}
+
+async function loadTokens(){
+  if(!JWT)return;
+  const r=await fetch(`${URL}/admin/tokens`,{headers:{Authorization:`Bearer ${JWT}`}});
+  const d=await r.json();
+  document.getElementById('tokensTBody').innerHTML=d.map(t=>`
+    <tr>
+      <td>${t.id}</td>
+      <td style="font-size:.72rem;color:#0a6e8a;word-break:break-all">${t.token}</td>
+      <td>${t.name||'—'}</td>
+      <td>${t.user_id||'—'}</td>
+      <td>${t.total_requests||0}</td>
+      <td>${(t.total_tokens_consumed||0).toLocaleString()}</td>
+      <td style="font-size:.72rem">${t.last_used_at?new Date(t.last_used_at).toLocaleString('es'):'nunca'}</td>
+      <td><button class="btn danger sm" onclick="delToken(${t.id})">Revocar</button></td>
+    </tr>`).join('');
+}
+
+async function delToken(id){
+  if(!confirm('¿Revocar token '+id+'?'))return;
+  await fetch(`${URL}/admin/tokens/${id}`,{method:'DELETE',headers:{Authorization:`Bearer ${JWT}`}});
+  loadTokens();loadStats();
+}
+
+async function createToken(){
+  const body={user_id:parseInt(document.getElementById('ntUID').value),name:document.getElementById('ntName').value};
+  try{
+    const r=await fetch(`${URL}/admin/tokens`,{method:'POST',headers:jwtH(),body:JSON.stringify(body)});
+    const d=await r.json();
+    document.getElementById('ntResult').textContent=d.token||('Error: '+JSON.stringify(d));
+    if(d.token)loadTokens();
+  }catch(e){document.getElementById('ntResult').textContent='Error: '+e.message;}
+}
+
+// ── CHAT ──────────────────────────────────────────────────
+function addMsg(t,cls,extra=''){
+  const c=document.getElementById('chatMsgs');
+  const d=document.createElement('div');d.className='msg '+cls;d.style.whiteSpace='pre-wrap';
+  d.textContent=t;if(extra)d.innerHTML+=extra;
+  c.appendChild(d);c.scrollTop=c.scrollHeight;
+}
+function newChatSess(){chatSess=null;chatN=0;chatTok=0;document.getElementById('chatMsgs').innerHTML='<div class="msg sys">Nueva sesión.</div>';document.getElementById('cSessId').textContent='—';document.getElementById('cCount').textContent='0';document.getElementById('cTokens').textContent='0';}
+function quickChat(m){document.getElementById('chatIn').value=m;sendChat();}
+
+async function sendChat(){
+  const inp=document.getElementById('chatIn');
+  const msg=inp.value.trim();if(!msg)return;
+  inp.value='';addMsg(msg,'u');
+  document.getElementById('btnChat').disabled=true;
+  const body={message:msg,session:chatSess,prompt_mode:document.getElementById('cMode').value};
+  const age=document.getElementById('cAge').value,alg=document.getElementById('cAlg').value,dx=document.getElementById('cDx').value;
+  if(age||alg||dx){body.context={};if(age)body.context.patient_age=+age;if(alg)body.context.allergies=alg;if(dx)body.context.previous_diagnosis=dx;}
+  try{
+    const r=await fetch(`${URL}/medical/chat`,{method:'POST',headers:{Authorization:`Bearer ${TOK}`,'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    const blocked=d?.data?.auditor_intercept||d?.data?.auditor_alert;
+    const reply=d?.data?.response||d?.error||JSON.stringify(d);
+    const cls='b '+(blocked?'blocked':'ok');
+    const badge=blocked?'<br><span class="badge br" style="margin-top:4px">⚠ Auditor bloqueó</span>':'<br><span class="badge bg" style="margin-top:4px">✓ Auditor aprobó</span>';
+    addMsg(reply,cls,badge);
+    chatSess=d.session_id||chatSess;chatN++;
+    chatTok+=(d.usage?.total_tokens||0);
+    document.getElementById('cSessId').textContent=(chatSess||'—').slice(-8);
+    document.getElementById('cCount').textContent=chatN;
+    document.getElementById('cTokens').textContent=chatTok.toLocaleString();
+  }catch(e){addMsg('Error: '+e.message,'msg sys');}
+  document.getElementById('btnChat').disabled=false;inp.focus();
+}
+
+// ── EJEMPLOS RESUMEN ──────────────────────────────────────
+const EXAMPLES={
+  xml:`<?xml version="1.0" encoding="UTF-8"?>
+<ClinicalDocument xmlns="urn:hl7-org:v3">
+  <id root="2.16.840.1.113883.19.5" extension="HC-2026-00421"/>
+  <effectiveTime value="20260406143000"/>
+  <patient>
+    <name>García Mendoza, Roberto</name>
+    <birthTime value="19581022"/>
+    <administrativeGenderCode code="M"/>
+  </patient>
+  <component>
+    <section>
+      <code code="11348-0" displayName="History of past illness"/>
+      <text>Antecedentes: HTA en tratamiento con enalapril 10mg/día. DM2 con metformina 850mg c/12h. Fumador 20 paq/año, exfumador desde 2018.</text>
+    </section>
+    <section>
+      <code code="46240-8" displayName="Chief Complaint"/>
+      <text>Dolor torácico opresivo 3/10 de 4 horas de evolución, irradiado a brazo izquierdo. Diaforesis. Disnea de esfuerzo moderado.</text>
+    </section>
+    <section>
+      <code code="8716-3" displayName="Vital Signs"/>
+      <text>TA: 168/96 mmHg | FC: 98 lpm | FR: 18 rpm | Temp: 36.7°C | SpO2: 94%</text>
+    </section>
+    <section>
+      <code code="18842-5" displayName="Discharge Diagnosis"/>
+      <text>ECG: supradesnivel ST segmento en V2-V5. Troponina I: 2.4 ng/mL (elevada). Se inicia anticoagulación y traslado a hemodinamia para cinecoronariografía de urgencia.</text>
+    </section>
+  </component>
+</ClinicalDocument>`,
+  txt:`Paciente masculino de 67 años con antecedentes de HTA y DM2 en tratamiento con enalapril 10mg y metformina 850mg. Consulta por dolor torácico opresivo de 4 horas irradiado a brazo izquierdo, diaforesis y disnea leve. TA: 165/98 mmHg. FC: 102 lpm. SpO2: 94%. ECG: supradesnivel ST en V2-V5. Troponina I elevada. Se administra AAS 300mg, heparina iv y nitroglicerina sublingual. Derivado a hemodinamia para cinecoronariografía urgente.`,
+  hl7:`{
+  "resourceType": "Bundle",
+  "entry": [
+    {
+      "resource": {
+        "resourceType": "Patient",
+        "name": [{"text": "García Mendoza Roberto"}],
+        "birthDate": "1958-10-22",
+        "gender": "male"
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "Condition",
+        "code": {"text": "STEMI anterior — supradesnivel ST V2-V5"},
+        "note": [{"text": "Dolor torácico opresivo 4h, irradiación brazo izquierdo, diaforesis. Troponina I 2.4 ng/mL"}]
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "Observation",
+        "code": {"text": "Signos vitales"},
+        "component": [
+          {"code":{"text":"TA"},"valueString":"168/96 mmHg"},
+          {"code":{"text":"FC"},"valueString":"98 lpm"},
+          {"code":{"text":"SpO2"},"valueString":"94%"}
+        ]
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "MedicationRequest",
+        "medicationCodeableConcept": {"text": "AAS 300mg + Heparina + Nitroglicerina sublingual"}
+      }
+    }
+  ]
+}`
+};
+function loadExample(k){document.getElementById('sumIn').value=EXAMPLES[k]||'';}
+
+// ── RESUMEN ───────────────────────────────────────────────
+async function sendSummary(){
+  const text=document.getElementById('sumIn').value.trim();if(!text)return;
+  document.getElementById('btnSum').disabled=true;
+  document.getElementById('sumResult').innerHTML='<em>Procesando...</em>';
+  try{
+    const r=await fetch(`${URL}/medical/summary`,{method:'POST',headers:{Authorization:`Bearer ${TOK}`,'Content-Type':'application/json'},body:JSON.stringify({message:text})});
+    const d=await r.json();
+    let p=d?.data?.response;
+    try{p=JSON.parse(p);}catch{}
+    const box=document.getElementById('sumResult');
+    if(typeof p==='object'&&p){
+      box.innerHTML=Object.entries(p).filter(([,v])=>v&&!(Array.isArray(v)&&!v.length)).map(([k,v])=>{
+        const val=Array.isArray(v)?'<ul>'+v.map(i=>`<li>${i}</li>`).join('')+'</ul>':(typeof v==='object'?JSON.stringify(v):v);
+        return `<div style="margin-bottom:8px"><strong style="font-size:.7rem;text-transform:uppercase;color:#64748b">${k.replace(/_/g,' ')}</strong><div>${val}</div></div>`;
+      }).join('');
+    } else { box.innerHTML=`<pre style="white-space:pre-wrap;font-size:.78rem">${typeof p==='string'?p:JSON.stringify(d,null,2)}</pre>`; }
+    const u=d.usage||{};
+    document.getElementById('sPT').textContent=u.prompt_tokens||'—';
+    document.getElementById('sCT').textContent=u.completion_tokens||'—';
+    document.getElementById('sTT').textContent=u.total_tokens||'—';
+  }catch(e){document.getElementById('sumResult').textContent='Error: '+e.message;}
+  document.getElementById('btnSum').disabled=false;
+}
+
+// ── VOZ ───────────────────────────────────────────────────
+function uid(){return 'v_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5)}
+function fmtT(s){return`${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`}
+function vFlash(i){const el=document.getElementById('sf'+i);el.classList.add('flash');setTimeout(()=>el.classList.remove('flash'),1400)}
+function vSet(id,val,fi){const el=document.getElementById('sv'+id);if(val&&val!==el.textContent){el.textContent=val;el.classList.remove('e');vFlash(fi??id)}}
+function vSetArr(id,arr,fi){if(arr&&arr.length>0)vSet(id,Array.isArray(arr)?arr.join(', '):arr,fi)}
+
+function vUpdateDoc(doc,alertas,usage){
+  if(!doc)return;
+  vSet(0,doc.motivo_consulta);
+  vSet(2,doc.enfermedad_actual);
+  const sv=doc.signos_vitales||{};
+  const svs=Object.entries(sv).filter(([,v])=>v).map(([k,v])=>`${k}:${v}`).join(' · ');
+  if(svs)vSet(1,svs);
+  const ant=doc.antecedentes||(doc.antecedentes_personales);
+  if(ant)vSet(3,typeof ant==='object'?Object.values(ant).filter(Boolean).join(' / '):ant);
+  const med=doc.medicacion_actual;
+  if(med)vSet(4,Array.isArray(med)?med.join(', '):med);
+  vSetArr(5,doc.diagnostico_sugerido);vSetArr(6,doc.medicamentos_sugeridos);vSetArr(7,doc.examenes_sugeridos);
+  if(alertas&&alertas.length>0){
+    document.getElementById('vAlertas').innerHTML=alertas.map(a=>`<div style="color:#9a3412;margin-bottom:4px">⚠ ${a}</div>`).join('');
+  }
+  if(usage){const t=usage.total_llm_tokens||0;document.getElementById('vTok').textContent=t.toLocaleString();}
+}
+
+function vVizStart(stream){
+  vACtx=new(window.AudioContext||window.webkitAudioContext)();
+  vAn=vACtx.createAnalyser();vAn.fftSize=128;
+  vACtx.createMediaStreamSource(stream).connect(vAn);
+  const buf=new Uint8Array(vAn.frequencyBinCount);
+  const cv=document.getElementById('viz');const cx=cv.getContext('2d');
+  function draw(){vViz=requestAnimationFrame(draw);vAn.getByteFrequencyData(buf);cx.clearRect(0,0,cv.width,cv.height);const w=cv.width/buf.length;buf.forEach((v,i)=>{const h=(v/255)*cv.height;cx.fillStyle=`rgba(10,110,138,${.3+v/255*.7})`;cx.fillRect(i*w,cv.height-h,w-1,h)});}draw();
+}
+function vVizStop(){if(vViz)cancelAnimationFrame(vViz);if(vACtx){vACtx.close();vACtx=null;}const cv=document.getElementById('viz');cv.getContext('2d').clearRect(0,0,cv.width,cv.height);}
+
+async function vStart(){
+  vSessId=uid();vChunkN=0;vDoc=null;
+  document.getElementById('vSessId').textContent=vSessId;
+  document.getElementById('vStat').textContent='grabando';
+  let stream;
+  try{stream=await navigator.mediaDevices.getUserMedia({audio:true});}
+  catch(e){alert('Micrófono: '+e.message);return;}
+  vVizStart(stream);vRecStart(stream);vPollStart();
+  document.getElementById('vBtnS').disabled=true;
+  document.getElementById('vBtnC').disabled=false;
+  document.getElementById('vBtnE').disabled=false;
+}
+
+function vRecStart(stream){
+  vBufs=[];
+  const mime=MediaRecorder.isTypeSupported('audio/webm;codecs=opus')?'audio/webm;codecs=opus':MediaRecorder.isTypeSupported('audio/webm')?'audio/webm':'';
+  vMR=new MediaRecorder(stream,mime?{mimeType:mime}:{});
+  vMR.ondataavailable=e=>{if(e.data.size>0)vBufs.push(e.data)};
+  vMR.start(500);vEl=0;
+  const secs=parseInt(document.getElementById('vMins').value)*60;
+  vChunkN++;document.getElementById('vSeg').textContent=vChunkN;
+  document.getElementById('vBar').style.width='0%';
+  vCT=setInterval(()=>{vEl++;document.getElementById('vTimer').textContent=fmtT(vEl);document.getElementById('vBar').style.width=Math.min(100,vEl/secs*100)+'%';if(vEl>=secs)vSend();},1000);
+}
+
+function vSend(){_vSend();}
+async function _vSend(){
+  if(!vMR||vMR.state==='inactive')return;
+  clearInterval(vCT);document.getElementById('vBtnC').disabled=true;document.getElementById('vStat').textContent='enviando...';
+  await new Promise(res=>{vMR.onstop=res;vMR.stop();});
+  const blob=new Blob(vBufs,{type:vMR.mimeType||'audio/webm'});
+  await _sendBlob(blob,vChunkN);
+  document.getElementById('vStat').textContent='grabando';document.getElementById('vBtnC').disabled=false;
+  vRecStart(vMR.stream);
+}
+
+async function _sendBlob(blob,n){
+  const fd=new FormData();
+  const ext=blob.type.includes('mp4')?'mp4':'webm';
+  fd.append('audio',blob,`chunk_${n}.${ext}`);
+  fd.append('session_id',vSessId);fd.append('chunk_number',n);
+  fd.append('tier',document.getElementById('vTier').value);
+  const r=await fetch(`${URL}/medical/voice/chunk`,{method:'POST',headers:{Authorization:`Bearer ${TOK}`},body:fd});
+  if(r.ok||r.status===202){document.getElementById('vChunks').textContent=n;}
+}
+
+async function vUpload(){
+  const file=document.getElementById('vFile').files[0];if(!file){alert('Selecciona un archivo.');return;}
+  if(!vSessId){vSessId=uid();document.getElementById('vSessId').textContent=vSessId;vPollStart();}
+  vChunkN++;document.getElementById('vStat').textContent='enviando archivo...';
+  await _sendBlob(file,vChunkN);
+  document.getElementById('vStat').textContent='procesando...';
+}
+
+function vPollStart(){
+  vPT=setInterval(async()=>{
+    if(!vSessId)return;
+    try{
+      const r=await fetch(`${URL}/medical/voice/status/${vSessId}`,{headers:{Authorization:`Bearer ${TOK}`}});
+      if(r.ok){
+        const d=await r.json();
+        vUpdateDoc(d.documento,d.alertas,d.usage);
+        document.getElementById('vRaw').textContent=JSON.stringify(d,null,2);
+      }
+    }catch{}
+  },4000);
+}
+
+async function vEnd(){
+  if(!confirm('¿Finalizar consulta?'))return;
+  if(vMR&&vMR.state!=='inactive'){await _vSend();await new Promise(r=>setTimeout(r,1500));}
+  clearInterval(vCT);clearInterval(vPT);vVizStop();
+  document.getElementById('vBtnC').disabled=true;document.getElementById('vBtnE').disabled=true;document.getElementById('vStat').textContent='consolidando...';
+  const r=await fetch(`${URL}/medical/voice/end`,{method:'POST',headers:{Authorization:`Bearer ${TOK}`,'Content-Type':'application/json'},body:JSON.stringify({session_id:vSessId})});
+  if(r.ok){
+    vDoc=await r.json();
+    vUpdateDoc(vDoc.documento,vDoc.alertas,vDoc.usage);
+    document.getElementById('vRaw').textContent=JSON.stringify(vDoc,null,2);
+    document.getElementById('vStat').textContent='completo ✓';
+  }else{document.getElementById('vStat').textContent='error';}
+  document.getElementById('vBtnR').disabled=false;
+}
+
+function vReset(){
+  clearInterval(vCT);clearInterval(vPT);vVizStop();if(vMR&&vMR.state!=='inactive')vMR.stop();
+  vSessId=null;vChunkN=0;vDoc=null;
+  document.getElementById('vStat').textContent='inactivo';document.getElementById('vSessId').textContent='—';
+  document.getElementById('vChunks').textContent='0';document.getElementById('vTok').textContent='0';
+  document.getElementById('vTimer').textContent='0:00';document.getElementById('vBar').style.width='0%';
+  document.getElementById('vSeg').textContent='—';document.getElementById('vAlertas').textContent='Sin alertas.';
+  [0,1,2,3,4,5,6,7].forEach(i=>{const el=document.getElementById('sv'+i);el.textContent=i<5?'Pendiente...':'Al finalizar...';el.classList.add('e');});
+  document.getElementById('vBtnS').disabled=false;document.getElementById('vBtnC').disabled=true;document.getElementById('vBtnE').disabled=true;document.getElementById('vBtnR').disabled=true;
+}
+
+function vCopy(){
+  if(!vDoc){alert('No hay documento finalizado.');return;}
+  navigator.clipboard.writeText(JSON.stringify(vDoc,null,2)).then(()=>alert('Copiado.')).catch(()=>{const ta=document.createElement('textarea');ta.value=JSON.stringify(vDoc,null,2);document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);alert('Copiado.');});
+}
+</script>
+</body>
+</html>
