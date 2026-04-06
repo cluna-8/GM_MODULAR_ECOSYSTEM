@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GoMedisys — Consulta de Voz</title>
+  <style>
+    :root {
+      --brand:   #0a6e8a;
+      --brand-d: #075a73;
+      --green:   #1a7f64;
+      --amber:   #b45309;
+      --red:     #b91c1c;
+      --bg:      #f0f4f8;
+      --card:    #ffffff;
+      --border:  #d1dce8;
+      --text:    #1e293b;
+      --muted:   #64748b;
+      --radius:  10px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Header ─────────────────────────────────── */
+    header {
+      background: var(--brand);
+      color: #fff;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.18);
+    }
+    header svg { flex-shrink: 0; }
+    header h1 { font-size: 1.2rem; font-weight: 600; }
+    header span { font-size: .85rem; opacity: .75; }
+    #statusBadge {
+      margin-left: auto;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: .78rem;
+      font-weight: 600;
+      background: rgba(255,255,255,.18);
+      border: 1px solid rgba(255,255,255,.3);
+    }
+    #statusBadge.recording { background: #dc2626; border-color: #dc2626; animation: pulse 1.2s infinite; }
+    #statusBadge.processing { background: var(--amber); border-color: var(--amber); }
+    #statusBadge.complete   { background: var(--green); border-color: var(--green); }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.55} }
+
+    /* ── Layout ──────────────────────────────────── */
+    main {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 18px;
+      padding: 18px 24px;
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+    @media(max-width: 800px) {
+      main { grid-template-columns: 1fr; }
+    }
+
+    /* ── Cards ───────────────────────────────────── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    }
+    .card h2 {
+      font-size: .82rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--muted);
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* ── Config fields ───────────────────────────── */
+    label { display: block; font-size: .82rem; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+    input, select {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: .88rem;
+      background: #f8fafc;
+      color: var(--text);
+      margin-bottom: 12px;
+      transition: border .15s;
+    }
+    input:focus, select:focus { outline: none; border-color: var(--brand); background: #fff; }
+    input[type=password] { letter-spacing: .1em; }
+
+    /* ── Buttons ─────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 9px 18px;
+      border-radius: 7px;
+      font-size: .88rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: background .15s, transform .08s;
+    }
+    .btn:active { transform: scale(.97); }
+    .btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+    .btn-primary   { background: var(--brand); color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: var(--brand-d); }
+    .btn-danger    { background: #dc2626; color: #fff; }
+    .btn-danger:hover:not(:disabled) { background: #b91c1c; }
+    .btn-secondary { background: #e2e8f0; color: var(--text); }
+    .btn-secondary:hover:not(:disabled) { background: #cbd5e1; }
+    .btn-ghost     { background: transparent; color: var(--brand); border: 1px solid var(--border); }
+    .btn-ghost:hover:not(:disabled) { background: #f0f9ff; }
+    .btn-full      { width: 100%; justify-content: center; }
+    .btn-row       { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    /* ── Recording panel ─────────────────────────── */
+    #vizWrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 56px;
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 14px;
+      overflow: hidden;
+    }
+    canvas#viz { width: 100%; height: 100%; display: block; }
+    #timerRow {
+      display: flex;
+      justify-content: space-between;
+      font-size: .82rem;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+    #timerRow strong { font-variant-numeric: tabular-nums; font-size: .95rem; color: var(--text); }
+    #chunkProgress {
+      height: 5px;
+      background: var(--border);
+      border-radius: 99px;
+      margin-bottom: 14px;
+      overflow: hidden;
+    }
+    #chunkBar {
+      height: 100%;
+      background: var(--brand);
+      border-radius: 99px;
+      transition: width .5s linear;
+      width: 0%;
+    }
+
+    /* ── Stats row ───────────────────────────────── */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 14px;
+    }
+    .stat {
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      text-align: center;
+    }
+    .stat .val { font-size: 1.3rem; font-weight: 700; color: var(--brand); }
+    .stat .lbl { font-size: .7rem; color: var(--muted); margin-top: 2px; }
+
+    /* ── SOAP Document ───────────────────────────── */
+    .doc-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media(max-width:600px) { .doc-grid { grid-template-columns: 1fr; } }
+    .doc-field {
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+      transition: border-color .3s, background .3s;
+    }
+    .doc-field.updated {
+      border-color: var(--brand);
+      background: #f0f9ff;
+    }
+    .doc-field h3 {
+      font-size: .75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .doc-field p {
+      font-size: .88rem;
+      line-height: 1.5;
+      color: var(--text);
+      min-height: 22px;
+    }
+    .doc-field p.empty { color: #aab; font-style: italic; }
+    .doc-field ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .doc-field ul li {
+      font-size: .88rem;
+      padding: 2px 0;
+      color: var(--text);
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+    }
+    .doc-field ul li::before { content: "•"; color: var(--brand); font-weight: 700; flex-shrink: 0; }
+    .doc-field ul li.empty-item::before { display: none; }
+    .doc-field ul li.empty-item { color: #aab; font-style: italic; }
+
+    /* Sugerencias AI */
+    .doc-field.ai-field { border-color: #bfdbfe; background: #eff6ff; }
+    .doc-field.ai-field h3 { color: #1d4ed8; }
+    .ai-badge {
+      display: inline-block;
+      font-size: .65rem;
+      font-weight: 700;
+      padding: 1px 7px;
+      border-radius: 99px;
+      background: #dbeafe;
+      color: #1d4ed8;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+
+    /* Alertas */
+    #alertasList { margin-top: 0; }
+    .alerta-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 10px 12px;
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      border-radius: 8px;
+      font-size: .85rem;
+      color: #9a3412;
+      margin-bottom: 8px;
+    }
+    .alerta-item svg { flex-shrink: 0; margin-top: 1px; }
+    #noAlertas { font-size: .85rem; color: var(--muted); font-style: italic; }
+
+    /* Signos vitales */
+    .vitals-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+    .vital-chip {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 8px;
+      text-align: center;
+    }
+    .vital-chip .vval { font-size: .92rem; font-weight: 700; color: var(--text); }
+    .vital-chip .vlbl { font-size: .65rem; color: var(--muted); }
+
+    /* ── Log ─────────────────────────────────────── */
+    #log {
+      height: 130px;
+      overflow-y: auto;
+      background: #0f172a;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-family: 'Courier New', monospace;
+      font-size: .75rem;
+      line-height: 1.6;
+      color: #94a3b8;
+      margin-top: 14px;
+    }
+    #log .ok   { color: #4ade80; }
+    #log .err  { color: #f87171; }
+    #log .info { color: #60a5fa; }
+    #log .warn { color: #fbbf24; }
+
+    /* ── Final overlay ───────────────────────────── */
+    #finalOverlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.5);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    #finalOverlay.show { display: flex; }
+    #finalBox {
+      background: var(--card);
+      border-radius: 14px;
+      padding: 28px 32px;
+      max-width: 520px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0,0,0,.3);
+    }
+    #finalBox h2 { font-size: 1.2rem; margin-bottom: 6px; color: var(--green); }
+    #finalBox p  { font-size: .88rem; color: var(--muted); margin-bottom: 18px; }
+    #jsonOutput {
+      background: #0f172a;
+      color: #a5f3fc;
+      font-family: 'Courier New', monospace;
+      font-size: .74rem;
+      line-height: 1.5;
+      border-radius: 8px;
+      padding: 14px;
+      max-height: 260px;
+      overflow-y: auto;
+      white-space: pre;
+      margin-bottom: 16px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────── -->
+<header>
+  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/>
+    <path d="M12 8v4l3 3"/>
+  </svg>
+  <div>
+    <h1>GoMedisys — Consulta de Voz</h1>
+    <span>Transcripción clínica progresiva</span>
+  </div>
+  <div id="statusBadge">INACTIVO</div>
+</header>
+
+<!-- ── Main grid ──────────────────────────────────────── -->
+<main>
+
+  <!-- ── Left column ──────────────────────────────────── -->
+  <div style="display:flex; flex-direction:column; gap:14px;">
+
+    <!-- Config -->
+    <div class="card">
+      <h2>Configuración</h2>
+      <label>URL del Gateway (ADM)</label>
+      <input id="admUrl" type="text" value="http://localhost:8000" />
+      <label>Token de acceso (hcg_...)</label>
+      <input id="token" type="password" placeholder="hcg_xxxxxxxxxxxxxxxxxxxxx" />
+      <label>Tier de transcripción</label>
+      <select id="tier">
+        <option value="classic">Classic — faster-whisper (local, sin costo por minuto)</option>
+        <option value="professional">Professional — Speechmatics Medical (diarización)</option>
+      </select>
+      <label>Duración del segmento (minutos)</label>
+      <input id="chunkMins" type="number" value="3" min="1" max="10" />
+    </div>
+
+    <!-- Recording controls -->
+    <div class="card">
+      <h2>Control de Grabación</h2>
+
+      <div id="vizWrap">
+        <canvas id="viz" width="280" height="56"></canvas>
+      </div>
+
+      <div id="timerRow">
+        <span>Segmento actual</span>
+        <strong id="chunkTimer">0:00</strong>
+      </div>
+      <div id="chunkProgress"><div id="chunkBar"></div></div>
+
+      <div class="btn-row" style="margin-bottom:12px;">
+        <button id="btnStart"  class="btn btn-primary btn-full" onclick="startConsultation()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8"/></svg>
+          Iniciar Consulta
+        </button>
+      </div>
+      <div class="btn-row" style="margin-bottom:12px;">
+        <button id="btnChunk" class="btn btn-secondary" style="flex:1" onclick="sendChunkManual()" disabled>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          Enviar segmento
+        </button>
+        <button id="btnEnd" class="btn btn-danger" style="flex:1" onclick="endConsultation()" disabled>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+          Finalizar
+        </button>
+      </div>
+      <button id="btnReset" class="btn btn-ghost btn-full" onclick="resetSession()" disabled>
+        Nueva consulta
+      </button>
+
+      <div class="stats">
+        <div class="stat"><div class="val" id="statChunks">0</div><div class="lbl">Segmentos</div></div>
+        <div class="stat"><div class="val" id="statTokens">0</div><div class="lbl">Tokens LLM</div></div>
+        <div class="stat"><div class="val" id="statTier">—</div><div class="lbl">Tier</div></div>
+      </div>
+    </div>
+
+    <!-- Activity log -->
+    <div class="card">
+      <h2>Registro de actividad</h2>
+      <div id="log"><span class="info">Esperando inicio de consulta...</span></div>
+    </div>
+
+  </div>
+
+  <!-- ── Right column — SOAP document ─────────────────── -->
+  <div style="display:flex; flex-direction:column; gap:14px;">
+
+    <div class="card">
+      <h2>Documento Clínico (SOAP) — Sesión: <span id="sessionDisplay" style="font-weight:700; color:var(--brand);">—</span></h2>
+
+      <div class="doc-grid">
+
+        <!-- Motivo de consulta -->
+        <div class="doc-field" id="field-motivo">
+          <h3>Motivo de consulta</h3>
+          <p id="val-motivo" class="empty">Pendiente de transcripción...</p>
+        </div>
+
+        <!-- Signos vitales -->
+        <div class="doc-field" id="field-vitales">
+          <h3>Signos vitales</h3>
+          <div class="vitals-grid" id="vitals-grid">
+            <div class="vital-chip"><div class="vval" id="vPA">—</div><div class="vlbl">T/A</div></div>
+            <div class="vital-chip"><div class="vval" id="vFC">—</div><div class="vlbl">FC</div></div>
+            <div class="vital-chip"><div class="vval" id="vTemp">—</div><div class="vlbl">Temp</div></div>
+            <div class="vital-chip"><div class="vval" id="vSO2">—</div><div class="vlbl">SpO₂</div></div>
+            <div class="vital-chip"><div class="vval" id="vFR">—</div><div class="vlbl">FR</div></div>
+            <div class="vital-chip"><div class="vval" id="vPeso">—</div><div class="vlbl">Peso</div></div>
+          </div>
+        </div>
+
+        <!-- Enfermedad actual -->
+        <div class="doc-field" id="field-enfermedad" style="grid-column:1/-1">
+          <h3>Enfermedad actual</h3>
+          <p id="val-enfermedad" class="empty">Pendiente de transcripción...</p>
+        </div>
+
+        <!-- Antecedentes -->
+        <div class="doc-field" id="field-antecedentes">
+          <h3>Antecedentes</h3>
+          <p id="val-antecedentes" class="empty">Pendiente de transcripción...</p>
+        </div>
+
+        <!-- Medicación actual -->
+        <div class="doc-field" id="field-medicacion">
+          <h3>Medicación actual</h3>
+          <ul id="val-medicacion"><li class="empty-item">Pendiente de transcripción...</li></ul>
+        </div>
+
+        <!-- Diagnóstico sugerido (AI) -->
+        <div class="doc-field ai-field" id="field-diagnostico">
+          <h3>Diagnóstico sugerido <span class="ai-badge">IA</span></h3>
+          <ul id="val-diagnostico"><li class="empty-item">Se generará al finalizar la consulta</li></ul>
+        </div>
+
+        <!-- Medicamentos sugeridos (AI) -->
+        <div class="doc-field ai-field" id="field-medicamentos">
+          <h3>Medicamentos sugeridos <span class="ai-badge">IA</span></h3>
+          <ul id="val-medicamentos"><li class="empty-item">Se generará al finalizar la consulta</li></ul>
+        </div>
+
+        <!-- Exámenes sugeridos (AI) -->
+        <div class="doc-field ai-field" id="field-examenes" style="grid-column:1/-1">
+          <h3>Exámenes sugeridos <span class="ai-badge">IA</span></h3>
+          <ul id="val-examenes"><li class="empty-item">Se generará al finalizar la consulta</li></ul>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Alertas clínicas -->
+    <div class="card">
+      <h2>Alertas clínicas — Medical Auditor</h2>
+      <div id="alertasList">
+        <p id="noAlertas">Sin alertas detectadas.</p>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<!-- ── Final document overlay ──────────────────────────── -->
+<div id="finalOverlay">
+  <div id="finalBox">
+    <h2>✅ Consulta finalizada</h2>
+    <p>Documento clínico consolidado. Puede copiar el JSON para integrarlo en el HIS.</p>
+    <div id="jsonOutput"></div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="copyJson()">Copiar JSON</button>
+      <button class="btn btn-secondary" onclick="window.print()">Imprimir</button>
+      <button class="btn btn-ghost" onclick="document.getElementById('finalOverlay').classList.remove('show')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ────────────────────────────────────────────────
+let sessionId     = null;
+let chunkNumber   = 0;
+let mediaRecorder = null;
+let audioChunks   = [];
+let chunkTimer    = null;
+let pollTimer     = null;
+let chunkElapsed  = 0;
+let audioCtx      = null;
+let analyser      = null;
+let vizTimer      = null;
+let finalDoc      = null;
+
+// ── Helpers ──────────────────────────────────────────────
+function uid() {
+  return 'voice_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+function log(msg, type = 'info') {
+  const el = document.getElementById('log');
+  const line = document.createElement('span');
+  line.className = type;
+  const now = new Date().toLocaleTimeString('es', { hour12: false });
+  line.textContent = `[${now}] ${msg}\n`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function setStatus(text, cls = '') {
+  const b = document.getElementById('statusBadge');
+  b.textContent = text;
+  b.className = cls;
+}
+
+function flashField(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.add('updated');
+  setTimeout(() => el.classList.remove('updated'), 1500);
+}
+
+function fmtTime(s) {
+  return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
+}
+
+// ── Update SOAP document in DOM ──────────────────────────
+function updateDoc(doc, alertas, usage) {
+  if (!doc) return;
+
+  function setText(id, val, fieldId) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const prev = el.textContent;
+    if (val && val !== prev) {
+      el.textContent = val;
+      el.classList.remove('empty');
+      flashField(fieldId);
+    }
+  }
+
+  function setList(id, vals, fieldId) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (!vals || vals.length === 0) return;
+    const prev = el.innerHTML;
+    const html = vals.map(v => `<li>${v}</li>`).join('');
+    if (html !== prev) {
+      el.innerHTML = html;
+      flashField(fieldId);
+    }
+  }
+
+  setText('val-motivo', doc.motivo_consulta, 'field-motivo');
+  setText('val-enfermedad', doc.enfermedad_actual, 'field-enfermedad');
+  setText('val-antecedentes', doc.antecedentes, 'field-antecedentes');
+
+  // Medicación (array o string)
+  const med = doc.medicacion_actual;
+  if (med && med.length > 0) {
+    const arr = Array.isArray(med) ? med : [med];
+    setList('val-medicacion', arr, 'field-medicacion');
+  }
+
+  // Signos vitales
+  const sv = doc.signos_vitales || {};
+  const vmap = {
+    vPA: sv.tension_arterial || sv.ta || sv.presion_arterial || sv.pa,
+    vFC: sv.frecuencia_cardiaca || sv.fc || sv.pulso,
+    vTemp: sv.temperatura || sv.temp,
+    vSO2: sv.saturacion_oxigeno || sv.spo2 || sv.so2,
+    vFR: sv.frecuencia_respiratoria || sv.fr,
+    vPeso: sv.peso,
+  };
+  let hadVitals = false;
+  for (const [eid, val] of Object.entries(vmap)) {
+    if (val) {
+      document.getElementById(eid).textContent = val;
+      hadVitals = true;
+    }
+  }
+  if (hadVitals) flashField('field-vitales');
+
+  // AI suggestions
+  setList('val-diagnostico', doc.diagnostico_sugerido, 'field-diagnostico');
+  setList('val-medicamentos', doc.medicamentos_sugeridos, 'field-medicamentos');
+  setList('val-examenes', doc.examenes_sugeridos, 'field-examenes');
+
+  // Alertas
+  if (alertas && alertas.length > 0) {
+    const cont = document.getElementById('alertasList');
+    const noAl = document.getElementById('noAlertas');
+    if (noAl) noAl.style.display = 'none';
+    alertas.forEach(a => {
+      const id = 'alerta-' + btoa(a).slice(0,12);
+      if (!document.getElementById(id)) {
+        const div = document.createElement('div');
+        div.className = 'alerta-item';
+        div.id = id;
+        div.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>${a}`;
+        cont.appendChild(div);
+      }
+    });
+  }
+
+  // Stats
+  if (usage) {
+    const total = usage.total_llm_tokens || usage.total_tokens || 0;
+    document.getElementById('statTokens').textContent = total.toLocaleString();
+  }
+}
+
+// ── Waveform visualizer ──────────────────────────────────
+function startViz(stream) {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 256;
+  const src = audioCtx.createMediaStreamSource(stream);
+  src.connect(analyser);
+  const buf = new Uint8Array(analyser.frequencyBinCount);
+  const canvas = document.getElementById('viz');
+  const ctx = canvas.getContext('2d');
+
+  function draw() {
+    vizTimer = requestAnimationFrame(draw);
+    analyser.getByteFrequencyData(buf);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const w = canvas.width / buf.length;
+    buf.forEach((v, i) => {
+      const h = (v / 255) * canvas.height;
+      const alpha = 0.4 + (v / 255) * 0.6;
+      ctx.fillStyle = `rgba(10, 110, 138, ${alpha})`;
+      ctx.fillRect(i * w, canvas.height - h, w - 1, h);
+    });
+  }
+  draw();
+}
+
+function stopViz() {
+  if (vizTimer) cancelAnimationFrame(vizTimer);
+  if (audioCtx) { audioCtx.close(); audioCtx = null; }
+  const canvas = document.getElementById('viz');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+// ── Start consultation ───────────────────────────────────
+async function startConsultation() {
+  const url   = document.getElementById('admUrl').value.trim();
+  const token = document.getElementById('token').value.trim();
+  if (!url || !token) {
+    alert('Completa la URL del Gateway y el token de acceso.');
+    return;
+  }
+
+  sessionId   = uid();
+  chunkNumber = 0;
+  finalDoc    = null;
+
+  document.getElementById('sessionDisplay').textContent = sessionId;
+  document.getElementById('statTier').textContent =
+    document.getElementById('tier').value === 'classic' ? 'Classic' : 'Pro';
+  document.getElementById('statChunks').textContent = '0';
+  document.getElementById('statTokens').textContent = '0';
+
+  // Request microphone
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    log('No se pudo acceder al micrófono: ' + e.message, 'err');
+    alert('Permiso de micrófono denegado.');
+    return;
+  }
+
+  startViz(stream);
+  startRecording(stream);
+  startPoll();
+
+  document.getElementById('btnStart').disabled  = true;
+  document.getElementById('btnChunk').disabled  = false;
+  document.getElementById('btnEnd').disabled    = false;
+  document.getElementById('btnReset').disabled  = true;
+  setStatus('GRABANDO', 'recording');
+  log(`Sesión iniciada: ${sessionId}`, 'ok');
+  log(`Tier: ${document.getElementById('tier').value} | Segmento: ${document.getElementById('chunkMins').value} min`, 'info');
+}
+
+// ── Start recording one chunk ────────────────────────────
+function startRecording(stream) {
+  audioChunks = [];
+  const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+    ? 'audio/webm;codecs=opus'
+    : MediaRecorder.isTypeSupported('audio/webm')
+    ? 'audio/webm'
+    : '';
+
+  mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+  mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+  mediaRecorder.start(500);
+
+  chunkElapsed = 0;
+  const chunkSecs = parseInt(document.getElementById('chunkMins').value, 10) * 60;
+  document.getElementById('chunkBar').style.width = '0%';
+
+  chunkTimer = setInterval(() => {
+    chunkElapsed++;
+    document.getElementById('chunkTimer').textContent = fmtTime(chunkElapsed);
+    const pct = Math.min(100, (chunkElapsed / chunkSecs) * 100);
+    document.getElementById('chunkBar').style.width = pct + '%';
+    if (chunkElapsed >= chunkSecs) sendChunk();
+  }, 1000);
+
+  log(`Grabando segmento ${chunkNumber + 1}...`, 'info');
+}
+
+// ── Send chunk (manual or auto) ──────────────────────────
+function sendChunkManual() { sendChunk(); }
+
+async function sendChunk() {
+  if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
+
+  clearInterval(chunkTimer);
+  chunkNumber++;
+
+  setStatus('ENVIANDO', 'processing');
+  document.getElementById('btnChunk').disabled = true;
+
+  // Stop recorder and wait for all data
+  await new Promise(resolve => {
+    mediaRecorder.onstop = resolve;
+    mediaRecorder.stop();
+  });
+
+  const blob     = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+  const ext      = blob.type.includes('mp4') ? 'mp4' : 'webm';
+  const filename = `chunk_${chunkNumber}.${ext}`;
+
+  log(`Enviando segmento ${chunkNumber} (${(blob.size/1024).toFixed(1)} KB)...`, 'info');
+
+  const url   = document.getElementById('admUrl').value.trim();
+  const token = document.getElementById('token').value.trim();
+  const tier  = document.getElementById('tier').value;
+
+  const fd = new FormData();
+  fd.append('audio', blob, filename);
+  fd.append('session_id', sessionId);
+  fd.append('chunk_number', chunkNumber);
+  fd.append('tier', tier);
+
+  try {
+    const res = await fetch(`${url}/medical/voice/chunk`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: fd,
+    });
+    if (res.status === 202 || res.status === 200) {
+      log(`Segmento ${chunkNumber} aceptado (HTTP ${res.status})`, 'ok');
+      document.getElementById('statChunks').textContent = chunkNumber;
+    } else {
+      const txt = await res.text();
+      log(`Error HTTP ${res.status}: ${txt.slice(0,120)}`, 'err');
+    }
+  } catch (e) {
+    log(`Error de red: ${e.message}`, 'err');
+  }
+
+  // Restart recording
+  const stream = mediaRecorder.stream;
+  setStatus('GRABANDO', 'recording');
+  document.getElementById('btnChunk').disabled = false;
+  startRecording(stream);
+}
+
+// ── Poll status ──────────────────────────────────────────
+function startPoll() {
+  pollTimer = setInterval(async () => {
+    if (!sessionId) return;
+    const url   = document.getElementById('admUrl').value.trim();
+    const token = document.getElementById('token').value.trim();
+    try {
+      const res = await fetch(`${url}/medical/voice/status/${sessionId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        updateDoc(data.documento, data.alertas, data.usage);
+      }
+    } catch (_) { /* silent */ }
+  }, 5000);
+}
+
+// ── End consultation ─────────────────────────────────────
+async function endConsultation() {
+  if (!confirm('¿Finalizar la consulta? Se consolidará el documento clínico completo.')) return;
+
+  // Send last chunk if recording
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    log('Enviando último segmento antes de finalizar...', 'info');
+    await sendChunk();
+    // Give backend a moment to process
+    await new Promise(r => setTimeout(r, 1500));
+  }
+
+  clearInterval(chunkTimer);
+  clearInterval(pollTimer);
+  stopViz();
+
+  document.getElementById('btnChunk').disabled = true;
+  document.getElementById('btnEnd').disabled   = true;
+  setStatus('CONSOLIDANDO', 'processing');
+  log('Solicitando consolidación final...', 'info');
+
+  const url   = document.getElementById('admUrl').value.trim();
+  const token = document.getElementById('token').value.trim();
+
+  try {
+    const res = await fetch(`${url}/medical/voice/end`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ session_id: sessionId }),
+    });
+
+    if (res.ok) {
+      finalDoc = await res.json();
+      updateDoc(finalDoc.documento, finalDoc.alertas, finalDoc.usage);
+
+      setStatus('COMPLETADO', 'complete');
+      log('Consulta finalizada. Documento consolidado.', 'ok');
+      log(`Tokens totales: ${finalDoc.usage?.total_llm_tokens || 0}`, 'ok');
+
+      // Show final overlay
+      document.getElementById('jsonOutput').textContent = JSON.stringify(finalDoc, null, 2);
+      document.getElementById('finalOverlay').classList.add('show');
+    } else {
+      const txt = await res.text();
+      log(`Error al finalizar: HTTP ${res.status} — ${txt.slice(0,120)}`, 'err');
+      setStatus('ERROR', '');
+    }
+  } catch (e) {
+    log(`Error de red al finalizar: ${e.message}`, 'err');
+    setStatus('ERROR', '');
+  }
+
+  document.getElementById('btnReset').disabled = false;
+}
+
+// ── Reset ────────────────────────────────────────────────
+function resetSession() {
+  sessionId   = null;
+  chunkNumber = 0;
+  finalDoc    = null;
+
+  clearInterval(chunkTimer);
+  clearInterval(pollTimer);
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop();
+  }
+  stopViz();
+
+  // Reset UI
+  document.getElementById('sessionDisplay').textContent = '—';
+  document.getElementById('statChunks').textContent = '0';
+  document.getElementById('statTokens').textContent = '0';
+  document.getElementById('statTier').textContent   = '—';
+  document.getElementById('chunkTimer').textContent  = '0:00';
+  document.getElementById('chunkBar').style.width    = '0%';
+
+  // Reset SOAP fields
+  const empties = ['val-motivo','val-enfermedad','val-antecedentes'];
+  empties.forEach(id => {
+    const el = document.getElementById(id);
+    el.textContent = 'Pendiente de transcripción...';
+    el.classList.add('empty');
+  });
+  ['val-medicacion','val-diagnostico','val-medicamentos','val-examenes'].forEach(id => {
+    const el = document.getElementById(id);
+    const placeholder = id.startsWith('val-medic') && !id.includes('amentos')
+      ? 'Pendiente de transcripción...'
+      : 'Se generará al finalizar la consulta';
+    el.innerHTML = `<li class="empty-item">${placeholder}</li>`;
+  });
+  ['vPA','vFC','vTemp','vSO2','vFR','vPeso'].forEach(id => {
+    document.getElementById(id).textContent = '—';
+  });
+  document.getElementById('alertasList').innerHTML = '<p id="noAlertas">Sin alertas detectadas.</p>';
+
+  document.getElementById('btnStart').disabled  = false;
+  document.getElementById('btnChunk').disabled  = true;
+  document.getElementById('btnEnd').disabled    = true;
+  document.getElementById('btnReset').disabled  = true;
+  setStatus('INACTIVO', '');
+
+  const logEl = document.getElementById('log');
+  logEl.innerHTML = '<span class="info">Sesión reiniciada. Listo para nueva consulta.\n</span>';
+}
+
+// ── Copy JSON ────────────────────────────────────────────
+function copyJson() {
+  if (!finalDoc) return;
+  navigator.clipboard.writeText(JSON.stringify(finalDoc, null, 2))
+    .then(() => alert('JSON copiado al portapapeles.'))
+    .catch(() => {
+      const ta = document.createElement('textarea');
+      ta.value = JSON.stringify(finalDoc, null, 2);
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      alert('JSON copiado.');
+    });
+}
+</script>
+</body>
+</html>
