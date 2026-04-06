@@ -1,1 +1,7 @@
 FRONT/
+.env*
+__pycache__/
+*.pyc
+logs/
+*.log
+audit_log.jsonl
