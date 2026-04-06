@@ -5,3 +5,17 @@ __pycache__/
 logs/
 *.log
 audit_log.jsonl
+
+# Carpetas fuera de SERVICES/ — no se suben al repo
+gm_general_chat/
+hc/
+BACK/
+CLINICAL_SANDBOX/
+basura_febrero/
+TASKS.md
+AI_CONTEXT.md
+clinical_audit_guide.md
+test_flow.sh
+test_production.sh
+test_summary.sh
+.agents/
