@@ -2,7 +2,7 @@
 tipo: módulo-clínico
 estado: en-desarrollo
 puerto: 7003
-stack: faster-whisper | Speechmatics | FastAPI | Redis | gpt-4o-mini
+stack: faster-whisper | Speechmatics | FastAPI | Redis db=1 | gpt-4o-mini
 relacionado: [[ADM_Gateway]], [[Medical_Auditor]]
 ---
 
@@ -16,21 +16,23 @@ relacionado: [[ADM_Gateway]], [[Medical_Auditor]]
 ## 🟡 Estado: EN DESARROLLO — Implementado, pendiente pruebas con usuarios reales
 
 > [!NOTE]
-> Rama activa: `gm_voice_dev`. Servicio implementado y probado localmente con audio sintético (OpenAI TTS). La rama permanece abierta hasta completar pruebas con médicos reales y audio de consultas auténticas.
+> Rama activa: `gm_voice_dev`. Servicio implementado y probado localmente con audio real (13 min, audio médico en español). La rama permanece abierta hasta completar pruebas con médicos reales en consulta auténtica.
 
 **Lo que está hecho:**
 - ✅ Endpoints `/chunk`, `/end`, `/status`, `/health`
 - ✅ Tier Classic: faster-whisper CPU (int8, modelo `small`)
 - ✅ Tier Professional: Speechmatics Medical API (estructura lista, requiere API key)
-- ✅ Estado de sesión en Redis (`redis-voice`, TTL 2h)
+- ✅ Estado de sesión en Redis (`redis-general` db=1, TTL 2h)
 - ✅ Actualización incremental del documento con GPT-4o-mini
 - ✅ Consolidación final con sugerencias clínicas
 - ✅ Integración con [[Medical_Auditor]] (fail-open)
 - ✅ Endpoints proxy en [[ADM_Gateway]]: `/medical/voice/chunk`, `/medical/voice/end`, `/medical/voice/status/{id}`
 - ✅ Billing diferenciado: `tool_used = "voice_classic"` / `"voice_professional"`
+- ✅ Chunks configurables: 30s, 1 min, 2 min, 3 min, 5 min
+- ✅ Procesamiento de archivos largos: división automática en browser (Web Audio API) con progreso en pantalla
 
 **Pendiente:**
-- 🔲 Pruebas con audio real de consultas médicas en español
+- 🔲 Pruebas con audio real de consultas médicas en español (en curso)
 - 🔲 Evaluar modelo `medium` vs `small` en precisión de terminología clínica
 - 🔲 Volumen de caché de HuggingFace en docker-compose (evitar re-descarga al rebuildar)
 
@@ -57,7 +59,7 @@ graph TD
     WHISPER --> LLM["gpt-4o-mini\nActualiza documento parcial"]
     SPEECH --> LLM
 
-    LLM --> REDIS[("Redis\nContexto acumulado por sesión")]
+    LLM --> REDIS[("redis-general db=1\nContexto acumulado por sesión")]
     LLM --> MA["[[Medical_Auditor]] :8001\nValida sugerencias clínicas"]
     MA --> OUT["Respuesta parcial / final\nJSON clínico estructurado"]
 ```
@@ -68,9 +70,11 @@ graph TD
 
 ```
 1. Médico inicia consulta → HIS abre sesión (session_id)
-2. Cada 3-4 min → HIS envía chunk de audio + session_id + tier
-3. Servidor transcribe → acumula en Redis → LLM actualiza documento
-4. Médico ve el documento construirse en pantalla en tiempo real
+2. Cada N segundos/minutos (30s, 1, 2, 3 ó 5 min) → HIS envía chunk de audio + session_id + tier
+   • Grabación en vivo: MediaRecorder corta y envía automáticamente al llegar el intervalo
+   • Archivo largo subido: browser divide en chunks con Web Audio API antes de enviar
+3. Servidor transcribe → acumula en Redis (db=1) → LLM actualiza documento parcial
+4. Médico ve el documento construirse en pantalla en tiempo real (polling cada 4s)
 5. Consulta termina → HIS envía POST /end
 6. Servidor consolida → documento final + sugerencias validadas por Auditor
 ```
@@ -168,6 +172,8 @@ RAM: 7.8GB total / ~5.8GB disponibles
 Disco: 474GB libres
 Red Docker: gomedisys-net (comparte con resto de servicios)
 Puerto: 7003
+Redis: redis-general (db=1) — compartido con el ecosistema, AOF persistente
+Compose: SERVICES/docker-compose.yml (maestro, levanta todos los servicios)
 ```
 
 > [!NOTE]

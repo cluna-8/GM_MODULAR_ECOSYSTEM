@@ -31,16 +31,17 @@ Bienvenido al vault del **GM Modular Ecosystem**. Este vault documenta la arquit
 graph TD
     User((Usuario / HIS)) -->|API Key hcg_| ADM["ADM Gateway\n(Portero / Proxy)"]
 
-    ADM -->|chat1| GC["General Chat\ngm-general-chat"]
-    ADM -->|chat2| CS["Clinical Summary\ngm-ch-summary"]
+    ADM -->|chat1| GC["General Chat\ngm-general-chat :7005"]
+    ADM -->|chat2| CS["Clinical Summary\ngm-ch-summary :7006"]
     ADM -->|chat3 🟡| VM["Voice Module\ngm-voice"]
     ADM -->|chat4 🔴| DM["Diagnosis Agent\ngm-diagnosis"]
 
     GC <-->|Pre & Post Audit| MA["Medical Auditor"]
     CS <-->|Pre & Post Audit| MA
 
-    MA <-->|Vector Search| Redis[(Redis\nSemantic Cache)]
-    ADM <-->|Logging & Billing| SQL[(SQLite\nmodular_gateway.db)]
+    MA <-->|Vector Search| Redis[(redis-general db=0\nSemantic Cache + Chat)]
+    VM <-->|Voice Sessions| RedisV[(redis-general db=1\nVoice Sessions TTL 2h)]
+    ADM <-->|Logging & Billing| SQL[(SQLite\nhealthcare_gateway.db)]
 ```
 
 ## 🔗 FLUJO DE UNA PETICIÓN COMPLETA

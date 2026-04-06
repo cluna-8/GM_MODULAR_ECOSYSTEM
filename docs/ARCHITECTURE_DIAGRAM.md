@@ -17,7 +17,7 @@ graph TD
 
     subgraph MODULOS_CLINICOS [Clinical Modules — gomedisys-net]
         direction TB
-        AG["Agente General\ngm-general-chat :7001"]:::clinical
+        AG["Agente General\ngm-general-chat :7005"]:::clinical
         CS["Agente Resumen\ngm-ch-summary :7006"]:::clinical
         AV["🟡 Agente Voz\ngm-voice :7003"]:::indev
         AD["🔴 Agente Diagnóstico\ngm-diagnosis :7004"]:::future
@@ -27,7 +27,7 @@ graph TD
         direction LR
         WHISPER["faster-whisper\n(Classic / CPU)"]:::indev
         SPEECH["Speechmatics Medical API\n(Professional)"]:::indev
-        REDIS_V[(Redis: voice sessions\nredis-voice :6379)]:::database
+        REDIS_V[(Redis: db=1 voice sessions\nredis-general :6379)]:::database
     end
 
     subgraph AUDITORIA [Safety Pipeline]

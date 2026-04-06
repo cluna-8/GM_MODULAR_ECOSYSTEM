@@ -19,3 +19,11 @@ test_flow.sh
 test_production.sh
 test_summary.sh
 .agents/
+
+# Demo local — no se sube al repo
+SERVICES/demo/
+SERVICES/gm_voice/demo/
+*.mp3
+*.mp4
+*.wav
+*.ogg

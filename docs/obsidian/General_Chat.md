@@ -1,7 +1,7 @@
 ---
 tipo: módulo-clínico
 estado: activo
-puerto: 7001
+puerto: 7005
 stack: FastAPI, LlamaIndex, OpenAI, Redis
 relacionado: [[ADM_Gateway]], [[Medical_Auditor]], [[Clinical_Summary]]
 ---
@@ -15,7 +15,7 @@ relacionado: [[ADM_Gateway]], [[Medical_Auditor]], [[Clinical_Summary]]
 
 ```mermaid
 graph LR
-    ADM["[[ADM_Gateway]]\nchat1"] --> GC["General Chat :7001"]
+    ADM["[[ADM_Gateway]]\nchat1"] --> GC["General Chat :7005"]
     GC <--> MA["[[Medical_Auditor]]"]
     GC <--> Redis[(Redis\nMemoria de Sesión)]
     GC --> LLM[GPT-4o-mini / OpenAI]
