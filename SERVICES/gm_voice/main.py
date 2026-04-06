@@ -85,11 +85,15 @@ async def process_chunk(session_id: str, chunk_number: int, tier: str, audio_pat
 
         state["accumulated_transcript"] += f"\n[Segmento {chunk_number}]: {transcript}"
         state["chunks_processed"] += 1
-        state["documento"] = await update_document(
+        state["documento"], usage = await update_document(
             current_doc=state["documento"],
             new_transcript=transcript,
             chunk_number=chunk_number
         )
+        state.setdefault("usage", {"input_tokens": 0, "output_tokens": 0, "total_llm_tokens": 0})
+        state["usage"]["input_tokens"] += usage["input_tokens"]
+        state["usage"]["output_tokens"] += usage["output_tokens"]
+        state["usage"]["total_llm_tokens"] += usage["total_tokens"]
 
         await save_session(session_id, state)
 
@@ -128,6 +132,21 @@ async def receive_chunk(
     tmp.write(await audio.read())
     tmp.close()
 
+    # Inicializar sesión en Redis antes de lanzar el background task
+    # así el polling no recibe 404 mientras Whisper transcribe
+    state = await get_session(session_id)
+    if not state:
+        await save_session(session_id, {
+            "session_id": session_id,
+            "tier": tier,
+            "status": "processing",
+            "chunks_processed": 0,
+            "accumulated_transcript": "",
+            "documento": dict(EMPTY_DOCUMENT),
+            "alertas": [],
+            "usage": {"input_tokens": 0, "output_tokens": 0, "total_llm_tokens": 0}
+        })
+
     background_tasks.add_task(process_chunk, session_id, chunk_number, tier, tmp.name)
 
     return {
@@ -150,22 +169,21 @@ async def end_consultation(payload: dict):
     if state.get("status") == "complete":
         return state
 
-    state["documento"] = await consolidate_final(
+    state["documento"], usage = await consolidate_final(
         documento=state["documento"],
         accumulated_transcript=state["accumulated_transcript"]
     )
+    state.setdefault("usage", {"input_tokens": 0, "output_tokens": 0, "total_llm_tokens": 0})
+    state["usage"]["input_tokens"] += usage["input_tokens"]
+    state["usage"]["output_tokens"] += usage["output_tokens"]
+    state["usage"]["total_llm_tokens"] += usage["total_tokens"]
 
     state["alertas"] = await validate_suggestions(state["documento"])
     state["status"] = "complete"
 
     await save_session(session_id, state)
 
-    return {
-        "session_id": session_id,
-        "status": "complete",
-        "documento": state["documento"],
-        "alertas": state["alertas"]
-    }
+    return state
 
 
 @app.get("/status/{session_id}")

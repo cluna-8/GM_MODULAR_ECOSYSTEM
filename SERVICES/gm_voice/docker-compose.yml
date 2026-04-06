@@ -1,6 +1,18 @@
 version: '3.8'
 
 services:
+  redis-voice:
+    image: redis:7-alpine
+    container_name: redis-voice
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - gomedisys-net
+
   gm-voice:
     build:
       context: .
@@ -12,6 +24,10 @@ services:
       - .env
     environment:
       - PORT=7003
+      - REDIS_URL=redis://redis-voice:6379/0
+    depends_on:
+      redis-voice:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:7003/health"]
@@ -19,8 +35,8 @@ services:
       timeout: 10s
       retries: 3
     networks:
-      - back_healthcare-network
+      - gomedisys-net
 
 networks:
-  back_healthcare-network:
+  gomedisys-net:
     external: true

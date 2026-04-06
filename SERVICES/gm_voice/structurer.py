@@ -32,8 +32,10 @@ EMPTY_DOCUMENT = {
 }
 
 
-async def update_document(current_doc: dict, new_transcript: str, chunk_number: int) -> dict:
-    """Update partial SOAP document with new transcript chunk."""
+async def update_document(current_doc: dict, new_transcript: str, chunk_number: int) -> tuple[dict, dict]:
+    """Update partial SOAP document with new transcript chunk.
+    Returns (updated_doc, usage) where usage = {input_tokens, output_tokens, total_tokens}.
+    """
     response = await client.chat.completions.create(
         model=MODEL,
         temperature=0.1,
@@ -47,16 +49,23 @@ async def update_document(current_doc: dict, new_transcript: str, chunk_number: 
             )}
         ]
     )
+    usage = {
+        "input_tokens": response.usage.prompt_tokens,
+        "output_tokens": response.usage.completion_tokens,
+        "total_tokens": response.usage.total_tokens
+    }
     raw = response.choices[0].message.content
     try:
-        return json.loads(raw)
+        return json.loads(raw), usage
     except json.JSONDecodeError:
         logger.error(f"LLM returned invalid JSON on update: {raw[:200]}")
-        return current_doc
+        return current_doc, usage
 
 
-async def consolidate_final(documento: dict, accumulated_transcript: str) -> dict:
-    """Final pass: complete document + generate clinical suggestions."""
+async def consolidate_final(documento: dict, accumulated_transcript: str) -> tuple[dict, dict]:
+    """Final pass: complete document + generate clinical suggestions.
+    Returns (final_doc, usage).
+    """
     response = await client.chat.completions.create(
         model=MODEL,
         temperature=0.2,
@@ -69,9 +78,14 @@ async def consolidate_final(documento: dict, accumulated_transcript: str) -> dic
             )}
         ]
     )
+    usage = {
+        "input_tokens": response.usage.prompt_tokens,
+        "output_tokens": response.usage.completion_tokens,
+        "total_tokens": response.usage.total_tokens
+    }
     raw = response.choices[0].message.content
     try:
-        return json.loads(raw)
+        return json.loads(raw), usage
     except json.JSONDecodeError:
         logger.error(f"LLM returned invalid JSON on final consolidation: {raw[:200]}")
-        return documento
+        return documento, usage

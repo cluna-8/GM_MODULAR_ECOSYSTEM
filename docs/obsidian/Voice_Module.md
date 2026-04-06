@@ -13,10 +13,26 @@ relacionado: [[ADM_Gateway]], [[Medical_Auditor]]
 
 ---
 
-## 🟡 Estado: EN DESARROLLO
+## 🟡 Estado: EN DESARROLLO — Implementado, pendiente pruebas con usuarios reales
 
 > [!NOTE]
-> Rama activa: `gm_voice_dev`. Arquitectura y diseño definidos. Iniciando implementación.
+> Rama activa: `gm_voice_dev`. Servicio implementado y probado localmente con audio sintético (OpenAI TTS). La rama permanece abierta hasta completar pruebas con médicos reales y audio de consultas auténticas.
+
+**Lo que está hecho:**
+- ✅ Endpoints `/chunk`, `/end`, `/status`, `/health`
+- ✅ Tier Classic: faster-whisper CPU (int8, modelo `small`)
+- ✅ Tier Professional: Speechmatics Medical API (estructura lista, requiere API key)
+- ✅ Estado de sesión en Redis (`redis-voice`, TTL 2h)
+- ✅ Actualización incremental del documento con GPT-4o-mini
+- ✅ Consolidación final con sugerencias clínicas
+- ✅ Integración con [[Medical_Auditor]] (fail-open)
+- ✅ Endpoints proxy en [[ADM_Gateway]]: `/medical/voice/chunk`, `/medical/voice/end`, `/medical/voice/status/{id}`
+- ✅ Billing diferenciado: `tool_used = "voice_classic"` / `"voice_professional"`
+
+**Pendiente:**
+- 🔲 Pruebas con audio real de consultas médicas en español
+- 🔲 Evaluar modelo `medium` vs `small` en precisión de terminología clínica
+- 🔲 Volumen de caché de HuggingFace en docker-compose (evitar re-descarga al rebuildar)
 
 ---
 
@@ -115,15 +131,16 @@ graph TD
 }
 ```
 
-### Response (parcial y final)
+### Response `/status` (parcial) y `/end` (final)
 ```json
 {
   "session_id": "voice_abc123",
   "status": "processing | complete",
+  "chunks_processed": 2,
   "documento": {
     "motivo_consulta": "...",
     "enfermedad_actual": "...",
-    "signos_vitales": {},
+    "signos_vitales": { "tension_arterial": "150/95" },
     "antecedentes": "...",
     "medicacion_actual": [],
     "diagnostico_sugerido": [],
@@ -131,7 +148,12 @@ graph TD
     "examenes_sugeridos": []
   },
   "alertas": [],
-  "auditor_alert": false
+  "usage": {
+    "input_tokens": 1240,
+    "output_tokens": 380,
+    "total_llm_tokens": 1620
+  },
+  "tier": "classic"
 }
 ```
 
