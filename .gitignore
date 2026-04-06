@@ -31,13 +31,13 @@ basura_febrero/
 .agents/
 .vscode/
 
-# ── Archivos sueltos fuera de SERVICES/ ──────────────────────
-TASKS.md
-AI_CONTEXT.md
-clinical_audit_guide.md
-test_flow.sh
-test_production.sh
-test_summary.sh
+# ── Archivos sueltos en la raíz ──────────────────────────────
+/TASKS.md
+/AI_CONTEXT.md
+/clinical_audit_guide.md
+/test_flow.sh
+/test_production.sh
+/test_summary.sh
 
 # ── Demo local (solo corre con python3 http.server) ──────────
 SERVICES/demo/
