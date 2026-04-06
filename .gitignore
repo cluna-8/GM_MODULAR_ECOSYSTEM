@@ -1,29 +1,55 @@
-FRONT/
+# ============================================================
+# GoMedisys — .gitignore
+# Solo se versionan: SERVICES/ y docs/
+# ============================================================
+
+# ── Entornos y secretos ──────────────────────────────────────
 .env*
+*.env
+
+# ── Python ──────────────────────────────────────────────────
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+*.egg-info/
+
+# ── Logs y auditoría ────────────────────────────────────────
 logs/
 *.log
 audit_log.jsonl
 
-# Carpetas fuera de SERVICES/ — no se suben al repo
-gm_general_chat/
-hc/
+# ── Carpetas fuera de SERVICES/ — no se suben al repo ────────
+FRONT/
 BACK/
+hc/
+gm_general_chat/
 CLINICAL_SANDBOX/
 basura_febrero/
+.agents/
+.vscode/
+
+# ── Archivos sueltos fuera de SERVICES/ ──────────────────────
 TASKS.md
 AI_CONTEXT.md
 clinical_audit_guide.md
 test_flow.sh
 test_production.sh
 test_summary.sh
-.agents/
 
-# Demo local — no se sube al repo
+# ── Demo local (solo corre con python3 http.server) ──────────
 SERVICES/demo/
 SERVICES/gm_voice/demo/
+
+# ── Archivos de audio/media ──────────────────────────────────
 *.mp3
 *.mp4
 *.wav
 *.ogg
+*.webm
+
+# ── Obsidian workspace state ─────────────────────────────────
+docs/.obsidian/workspace.json
+docs/.obsidian/workspace-mobile.json
