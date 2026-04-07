@@ -1,0 +1,21 @@
+services:
+  medical-auditor:
+    build: .
+    container_name: medical-auditor
+    volumes:
+      - .:/app
+    expose:
+      - "8001"
+    ports:
+      - "8001:8001"
+    env_file:
+      - /home/drexgen/Documents/CHAT-GOMedisys/gm_general_chat/.env
+    environment:
+      - REDIS_URL=redis://redis-general:6379/0
+    networks:
+      - gomedisys-net
+    restart: always
+
+networks:
+  gomedisys-net:
+    external: true
