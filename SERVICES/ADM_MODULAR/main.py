@@ -3,6 +3,7 @@ from fastapi import FastAPI, HTTPException, Depends, status, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer
 from sqlalchemy.orm import Session
+from sqlalchemy import func, desc
 from typing import List, Optional
 import httpx
 import json
@@ -224,7 +225,7 @@ async def list_tokens(
     db: Session = Depends(get_db)
 ):
     """List all tokens (Admin only)"""
-    tokens = db.query(Token).join(User).all()
+    tokens = db.query(Token).join(User, Token.user_id == User.id).all()
     return [TokenResponse.from_orm(token) for token in tokens]
 
 @app.get("/admin/tokens/{token_id}", response_model=TokenResponse)
@@ -234,7 +235,7 @@ async def get_token(
     db: Session = Depends(get_db)
 ):
     """Get specific token (Admin only)"""
-    token = db.query(Token).filter(Token.id == token_id).join(User).first()
+    token = db.query(Token).filter(Token.id == token_id).join(User, Token.user_id == User.id).first()
     if not token:
         raise HTTPException(status_code=404, detail="Token not found")
     return TokenResponse.from_orm(token)
@@ -332,7 +333,7 @@ async def get_system_stats(
     total_sessions = db.query(DBSession).count()
     total_requests = db.query(APIRequest).count()
     total_tokens_consumed = db.query(APIRequest).with_entities(
-        db.func.sum(APIRequest.tokens_consumed)
+        func.sum(APIRequest.tokens_consumed)
     ).scalar() or 0
     
     # Requests in last 24 hours
@@ -342,10 +343,10 @@ async def get_system_stats(
     # Top tools used
     tool_stats = db.query(
         APIRequest.tool_used,
-        db.func.count(APIRequest.tool_used).label('count')
+        func.count(APIRequest.tool_used).label('count')
     ).filter(
         APIRequest.tool_used.isnot(None)
-    ).group_by(APIRequest.tool_used).order_by(db.desc('count')).limit(5).all()
+    ).group_by(APIRequest.tool_used).order_by(desc('count')).limit(5).all()
     
     top_tools = [{"tool": tool, "count": count} for tool, count in tool_stats]
     
