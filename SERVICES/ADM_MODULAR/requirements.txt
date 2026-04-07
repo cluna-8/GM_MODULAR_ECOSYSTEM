@@ -25,7 +25,5 @@ pydantic-settings==2.0.3
 
 # Additional utilities
 typing-extensions>=4.8.0
-uuid==1.30
 
 tiktoken==0.7.0
-pyodbc==4.0.39
