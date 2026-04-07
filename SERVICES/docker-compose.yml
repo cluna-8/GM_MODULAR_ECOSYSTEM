@@ -33,7 +33,7 @@ services:
   # ── ADM Gateway (puerto 8000) ─────────────────────────────
   healthcare-api-gateway:
     build:
-      context: ../../Blossom/CHAT/ADM/api-gateway
+      context: ./ADM_MODULAR
       dockerfile: Dockerfile
     container_name: healthcare-api-gateway
     ports:
@@ -45,7 +45,7 @@ services:
       - VOICE_API_URL=http://gm-voice:7003
       - JWT_SECRET_KEY=gomedisys_dev_secret_2026
     volumes:
-      - ../../Blossom/CHAT/ADM/api-gateway:/app
+      - ./ADM_MODULAR:/app
       - gateway_data:/app/data
     depends_on:
       redis-general:
@@ -58,13 +58,13 @@ services:
   # ── General Chat — chat1 (puerto 7005) ────────────────────
   healthcare-chat-api:
     build:
-      context: ../gm_general_chat
+      context: ./gm_general_chat
       dockerfile: Dockerfile
     container_name: healthcare-chat-api
     ports:
       - "7005:7005"
     env_file:
-      - ../gm_general_chat/.env
+      - ./gm_general_chat/.env
     environment:
       - REDIS_URL=redis://redis-general:6379/0
       - DEFAULT_PROVIDER=openai
