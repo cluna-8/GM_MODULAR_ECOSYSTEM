@@ -13,10 +13,11 @@ relacionado: [[ADM_Gateway]], [[Medical_Auditor]]
 
 ---
 
-## 🟡 Estado: EN DESARROLLO — Implementado, pendiente pruebas con usuarios reales
+## 🟡 Estado: EN DESARROLLO — Integrado en `main`, pendiente pruebas con usuarios reales
 
 > [!NOTE]
-> Rama activa: `gm_voice_dev`. Servicio implementado y probado localmente con audio real (13 min, audio médico en español). La rama permanece abierta hasta completar pruebas con médicos reales en consulta auténtica.
+> Integrado en rama `main` (v0.1.0-dev). Probado localmente con audio real (13 min, español médico).
+> Pendiente: pruebas con médicos en consulta real antes de declarar `activo`.
 
 **Lo que está hecho:**
 - ✅ Endpoints `/chunk`, `/end`, `/status`, `/health`

@@ -1,139 +1,106 @@
 ---
 tipo: módulo-core
 estado: activo
-puerto: 7000
+puerto: 8000
 stack: FastAPI, SQLAlchemy, JWT, httpx
-relacionado: [[Medical_Auditor]], [[General_Chat]], [[Clinical_Summary]]
+relacionado: [[Medical_Auditor]], [[General_Chat]], [[Clinical_Summary]], [[Voice_Module]]
 ---
 
 # 🔐 ADM_MODULAR — API Gateway Central
 #módulo/gateway #estado/activo #seguridad/RBAC
 
-> **Rol**: El "Portero" (Portero) del ecosistema. Es el único punto de entrada público. Gestiona autenticación, autorización, enrutamiento y contabilidad de tokens LLM para todos los microservicios clínicos.
+> **Rol**: El "Portero" del ecosistema. Único punto de entrada público. Gestiona autenticación, autorización, enrutamiento y contabilidad de tokens LLM para todos los microservicios clínicos.
 
 ## 📌 Rol en el Ecosistema
 
 ```mermaid
 graph LR
-    HIS((HIS / Cliente)) -->|hcg_ token| ADM["ADM Gateway :7000"]
-    ADM -->|chat1| GC["[[General_Chat]] :7001"]
-    ADM -->|chat2| CS["[[Clinical_Summary]] :7006"]
-    ADM -->|chat3 🔴| VM["[[Voice_Module]] :7003"]
+    HIS((HIS / Cliente)) -->|hcg_ token| ADM["ADM Gateway :8000"]
+    ADM -->|chat1 /medical/chat| GC["[[General_Chat]] :7005"]
+    ADM -->|chat2 /medical/summary| CS["[[Clinical_Summary]] :7006"]
+    ADM -->|chat3 /medical/voice/*| VM["[[Voice_Module]] :7003"]
     ADM -->|chat4 🔴| DM["[[Diagnosis_Module]] :7004"]
+    ADM -->|auditor interno| MA["[[Medical_Auditor]] :8001"]
 ```
 
 ---
 
-## 🔑 2. Seguridad — Autenticación y Autorización
+## 🔑 Seguridad — Autenticación y Autorización
 
-### 2.1 API Keys (AuthN)
-- **Formato**: `hcg_` + `secrets.token_urlsafe(32)` = **256 bits de entropía**
-- **Tipo**: Bearer Token en cabecera `Authorization`
-- **Almacenamiento**: Hashed en `modular_gateway.db` (tabla `Token`)
+### API Keys médicas (Bearer hcg_)
+- **Formato**: `hcg_` + `secrets.token_hex(16)` — entropía de 128 bits
+- **Header**: `Authorization: Bearer hcg_xxx`
+- **Almacenamiento**: plain en `healthcare_gateway.db` (tabla `tokens`)
+- **Validación**: en cada request, lookup directo en SQLite
 
-### 2.2 Control de Acceso (AuthZ — RBAC)
-| Rol | Permisos |
+### Control de Acceso (RBAC)
+| Rol | Acceso |
 |---|---|
-| `admin` | Acceso total: crear/revocar tokens, ver logs, panel admin |
-| `user` | Usar los endpoints de proxy `/proxy/{module}` |
-| `monitor` | Solo lectura: ver estadísticas de consumo |
+| `admin` | Crear/revocar usuarios y tokens, ver logs, stats |
+| `user` | Endpoints médicos: `/medical/chat`, `/medical/summary`, `/medical/voice/*` |
+| `monitor` | Solo lectura: `/monitor/stats/*` |
 
-- **Implementación**: Dependencia FastAPI `validate_api_key` → consulta en tiempo real a la DB en **cada** petición.
-
-### 2.3 Sesiones de Admin (JWT)
-- **Protocolo**: JSON Web Tokens (JWT)
-- **Algoritmo**: `HS256` (HMAC-SHA256)
-- **Duración**: **24 horas** (`ACCESS_TOKEN_EXPIRE_MINUTES = 1440`)
-- **Hashing de contraseñas**: `bcrypt` vía `passlib` — protección contra rainbow tables
+### Admin JWT
+- **Endpoint**: `POST /auth/login` → devuelve JWT (HS256, 24h)
+- **Header**: `Authorization: Bearer <jwt>`
+- **Uso**: gestión admin — no para operaciones clínicas
 
 ---
 
-## 🗄️ 3. Esquema de Base de Datos (SQLite)
+## 🗄️ Base de Datos (SQLite)
 
-**Archivo**: `modular_gateway.db`
+**Archivo**: `data/healthcare_gateway.db` (volumen Docker `gateway_data`)
 
-### Tabla: `User`
-| Campo | Tipo | Descripción |
+| Tabla | Descripción |
+|---|---|
+| `users` | Usuarios del sistema (admin, doctor, monitor) |
+| `tokens` | Tokens `hcg_` activos/revocados |
+| `sessions` | Sesiones de chat con session_id |
+| `api_requests` | Log de cada request: tokens consumidos, endpoint, tool_used, costo estimado |
+
+---
+
+## 🔀 Endpoints Proxy
+
+### Operaciones médicas (token hcg_)
+| Método | Ruta | Módulo destino |
 |---|---|---|
-| `id` | INT | PK |
-| `username` | STR | Nombre de usuario |
-| `hashed_password` | STR | bcrypt hash |
-| `role` | ENUM | `admin`, `user`, `monitor` |
+| POST | `/medical/chat` | `healthcare-chat-api:7005` |
+| POST | `/medical/summary` | `gm-ch-summary:7006` |
+| POST | `/medical/voice/start` | `gm-voice:7003` |
+| POST | `/medical/voice/chunk` | `gm-voice:7003` — multipart, devuelve 202 |
+| GET | `/medical/voice/status/{id}` | `gm-voice:7003` — polling SOAP |
+| POST | `/medical/voice/end` | `gm-voice:7003` — consolida documento final |
 
-### Tabla: `Token`
-| Campo | Tipo | Descripción |
+### Administración (JWT admin)
+| Método | Ruta | Descripción |
 |---|---|---|
-| `id` | INT | PK |
-| `token_hash` | STR | Hash del `hcg_` token |
-| `user_id` | FK | Dueño del token |
-| `total_tokens_consumed` | INT | Contador acumulado de tokens LLM |
-| `is_active` | BOOL | Para revocar el acceso |
-
-### Tabla: `APILog`
-| Campo | Tipo | Descripción |
-|---|---|---|
-| `token_id` | FK | Qué token hizo la petición |
-| `endpoint` | STR | Módulo de destino (ej: `chat1`) |
-| `prompt_tokens` | INT | Tokens de entrada al LLM |
-| `completion_tokens` | INT | Tokens de salida del LLM |
-| `total_tokens` | INT | Total |
-| `timestamp` | DATETIME | Momento de la petición |
+| GET/POST | `/admin/users` | Gestión de usuarios |
+| GET/POST/DELETE | `/admin/tokens` | Gestión de tokens hcg_ |
+| GET | `/monitor/stats/system` | Stats globales (requests, tokens, tools) |
+| GET | `/monitor/stats/token/{id}` | Stats por token |
 
 ---
 
-## 🔀 4. Registro de Módulos (Module Registry)
-
-```python
-MODULES = {
-    "chat1": "http://gm-general-chat:7001",  # [[General_Chat]]
-    "chat2": "http://gm-ch-summary:7006",    # [[Clinical_Summary]]
-    "chat3": "http://gm-voice:7003",          # [[Voice_Module]] 🟡 EN DESARROLLO
-    "chat4": "http://gm-diagnosis:7004",      # [[Diagnosis_Module]] 🔴 PENDIENTE
-}
-```
-> Configurables vía Variables de Entorno para facilitar el despliegue.
-
----
-
-## 🎤 5. Endpoints de Voz (chat3 — [[Voice_Module]])
-
-Añadidos en rama `gm_voice_dev`. Proxy hacia `gm-voice:7003`.
-
-| Método | Ruta | Auth | Descripción |
-|---|---|---|---|
-| POST | `/medical/voice/chunk` | Bearer | Recibe chunk de audio (multipart). Devuelve 202 inmediatamente. |
-| POST | `/medical/voice/end` | Bearer | Cierre de consulta → documento SOAP consolidado. |
-| GET | `/medical/voice/status/{session_id}` | Bearer | Polling del documento en construcción. |
-
-**Billing diferenciado por tier:**
-El campo `tool_used` en `api_requests` registra `voice_classic` o `voice_professional` por cada llamada, permitiendo facturación separada por tier.
-
-**Request `/medical/voice/chunk`:**
-```
-Content-Type: multipart/form-data
-Authorization: Bearer hcg_xxx
-
-audio        = <archivo .mp3 / .wav>
-session_id   = "voz_abc123"
-chunk_number = 1
-tier         = "classic" | "professional"
-```
-
----
-
-## ⚙️ 5. Stack Tecnológico
+## ⚙️ Stack Tecnológico
 
 | Tecnología | Uso |
 |---|---|
-| **FastAPI** | Framework asíncrono (ASGI) |
-| **SQLAlchemy 2.0** | ORM para SQLite |
-| **httpx** | Cliente HTTP async para el proxy |
-| **python-jose** | Generación y validación de JWT |
-| **passlib[bcrypt]** | Hashing de contraseñas |
+| **FastAPI** | Framework ASGI |
+| **SQLAlchemy 2.0** | ORM SQLite — `func`, `desc` importados de `sqlalchemy` |
+| **httpx** | Cliente HTTP async para proxy |
+| **python-jose** | JWT HS256 |
+| **passlib[bcrypt]** | Hash de contraseñas admin |
+
+> [!NOTE]
+> Código en `SERVICES/ADM_MODULAR/`. Se levanta con `--reload` (bind mount en compose).
+> DB persiste en volumen Docker `gateway_data:/app/data`.
 
 ---
 
 ## 🔗 Notas Relacionadas
-- [[Medical_Auditor]] — Es llamado por los módulos que recibe el gateway
-- [[General_Chat]] — Módulo `chat1`
-- [[Clinical_Summary]] — Módulo `chat2`
+- [[Medical_Auditor]] — Auditoría clínica interna (port 8001)
+- [[General_Chat]] — Módulo `chat1` (:7005)
+- [[Clinical_Summary]] — Módulo `chat2` (:7006)
+- [[Voice_Module]] — Módulo `chat3` (:7003)
+- [[Index]] — Volver al mapa de contenido
