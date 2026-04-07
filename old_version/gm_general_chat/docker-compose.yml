@@ -1,0 +1,29 @@
+services:
+  gm-general-chat:
+    build: .
+    container_name: gm-general-chat
+    expose:
+      - "7005"
+    ports:
+      - "7005:7005"
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis-general:6379/0
+      - DEFAULT_PROVIDER=openai
+    networks:
+      - gomedisys-net
+    depends_on:
+      - redis-general
+    restart: always
+
+  redis-general:
+    image: redis:7-alpine
+    container_name: redis-general
+    networks:
+      - gomedisys-net
+    restart: always
+
+networks:
+  gomedisys-net:
+    external: true
