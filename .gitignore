@@ -29,6 +29,7 @@ hc/
 CLINICAL_SANDBOX/
 basura_febrero/
 .agents/
+.claude/
 .vscode/
 
 # ── Archivos sueltos en la raíz ──────────────────────────────
